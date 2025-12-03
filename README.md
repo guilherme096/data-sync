@@ -2,15 +2,27 @@
 
 ## Overview
 
-Simple setup for Trino to connect to multiple databases (PostgreSQL, MySQL, and MongoDB) and perform cross-database queries
+Trino distributed query engine setup with 1 coordinator and 3 workers, connecting to multiple databases (PostgreSQL, MySQL, and MongoDB) for cross-database federated queries.
 
 
-## How to use 
+## Getting Started
+
+### Start all services
+
+```bash
+docker-compose up -d
+```
+
+### Stop all services
+
+```bash
+docker-compose down
+```
 
 ### Connect to Trino
 
 ```bash
-docker exec -it trino trino
+docker exec -it trino-coordinator trino
 ```
 
 ### Query Examples
