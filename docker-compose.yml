@@ -10,6 +10,7 @@ services:
     depends_on:
       - postgres
       - mysql
+      - mongodb
 
   postgres:
     image: postgres:15
@@ -38,6 +39,20 @@ services:
       - ./init-scripts/mysql:/docker-entrypoint-initdb.d
       - mysql-data:/var/lib/mysql
 
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpass
+      MONGO_INITDB_DATABASE: testdb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./init-scripts/mongodb:/docker-entrypoint-initdb.d
+      - mongodb-data:/data/db
+
 volumes:
   postgres-data:
   mysql-data:
+  mongodb-data:

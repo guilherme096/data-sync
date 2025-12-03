@@ -2,7 +2,7 @@
 
 ## Overview
 
-Simple setup for Trino to connect to multiple databases (PostgreSQL and MySQL) and perform cross-database queries
+Simple setup for Trino to connect to multiple databases (PostgreSQL, MySQL, and MongoDB) and perform cross-database queries
 
 
 ## How to use 
@@ -30,16 +30,33 @@ SELECT * FROM postgresql.public.customers LIMIT 5;
 SELECT * FROM mysql.testdb.products LIMIT 5;
 ```
 
-#### Cross-Database Query (JOIN between PostgreSQL and MySQL)
+#### Query on MongoDB
+```sql
+SELECT * FROM mongodb.testdb.reviews LIMIT 5;
+```
+
+#### Cross-Database Query (Combining all 3 databases)
 ```sql
 SELECT
     c.name as customer_name,
-    c.country,
-    p.name as product_name,
-    p.category
-FROM postgresql.public.customers c
+    c.country as customer_country,
+    o.product_name as ordered_product,
+    o.quantity,
+    o.price as order_price,
+    p.name as product_full_name,
+    p.category,
+    p.stock,
+    r.rating,
+    r.comment
+FROM postgresql.public.orders o
+JOIN postgresql.public.customers c ON o.customer_id = c.id
 CROSS JOIN mysql.testdb.products p
-WHERE c.country = 'Portugal' AND p.category = 'Electronics'
+LEFT JOIN mongodb.testdb.reviews r ON p.id = r.product_id
+WHERE (
+    LOWER(p.name) LIKE '%' || LOWER(o.product_name) || '%'
+    OR LOWER(o.product_name) LIKE '%' || LOWER(SPLIT_PART(p.name, ' ', 1)) || '%'
+)
+ORDER BY c.name, r.rating DESC NULLS LAST
 LIMIT 10;
 ```
 
