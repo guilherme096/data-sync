@@ -7,3 +7,37 @@ services:
     volumes:
       - ./catalog:/etc/trino/catalog
       - ./trino-config:/etc/trino
+    depends_on:
+      - postgres
+      - mysql
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
+      - postgres-data:/var/lib/postgresql/data
+
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./init-scripts/mysql:/docker-entrypoint-initdb.d
+      - mysql-data:/var/lib/mysql
+
+volumes:
+  postgres-data:
+  mysql-data:
