@@ -6,10 +6,8 @@ services:
       - "8080:8080"
     volumes:
       - ./trino/coordinator-config:/etc/trino
-    depends_on:
-      - postgres
-      - mysql
-      - mongodb
+    networks:
+      - trino-network
 
   trino-worker-1:
     image: trinodb/trino:latest
@@ -19,11 +17,10 @@ services:
       - ./trino/coordinator-config/catalog:/etc/trino/catalog
     depends_on:
       - trino-coordinator
-      - postgres
-      - mysql
-      - mongodb
     environment:
       - NODE_ID=worker-1
+    networks:
+      - trino-network
 
   trino-worker-2:
     image: trinodb/trino:latest
@@ -33,11 +30,10 @@ services:
       - ./trino/coordinator-config/catalog:/etc/trino/catalog
     depends_on:
       - trino-coordinator
-      - postgres
-      - mysql
-      - mongodb
     environment:
       - NODE_ID=worker-2
+    networks:
+      - trino-network
 
   trino-worker-3:
     image: trinodb/trino:latest
@@ -47,53 +43,12 @@ services:
       - ./trino/coordinator-config/catalog:/etc/trino/catalog
     depends_on:
       - trino-coordinator
-      - postgres
-      - mysql
-      - mongodb
     environment:
       - NODE_ID=worker-3
+    networks:
+      - trino-network
 
-  postgres:
-    image: postgres:15
-    container_name: postgres
-    environment:
-      POSTGRES_DB: testdb
-      POSTGRES_USER: testuser
-      POSTGRES_PASSWORD: testpass
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
-      - postgres-data:/var/lib/postgresql/data
-
-  mysql:
-    image: mysql:8
-    container_name: mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: testdb
-      MYSQL_USER: testuser
-      MYSQL_PASSWORD: testpass
-    ports:
-      - "3307:3306"
-    volumes:
-      - ./init-scripts/mysql:/docker-entrypoint-initdb.d
-      - mysql-data:/var/lib/mysql
-
-  mongodb:
-    image: mongo:7
-    container_name: mongodb
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: adminpass
-      MONGO_INITDB_DATABASE: testdb
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./init-scripts/mongodb:/docker-entrypoint-initdb.d
-      - mongodb-data:/data/db
-
-volumes:
-  postgres-data:
-  mysql-data:
-  mongodb-data:
+networks:
+  trino-network:
+    name: trino-network
+    driver: bridge
