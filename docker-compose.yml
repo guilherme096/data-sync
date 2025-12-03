@@ -5,7 +5,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./catalog:/etc/trino/catalog
       - ./trino-config:/etc/trino
     depends_on:
       - postgres
