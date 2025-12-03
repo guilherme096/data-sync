@@ -5,5 +5,53 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./catalog:/etc/trino/catalog
       - ./trino-config:/etc/trino
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
+      - postgres-data:/var/lib/postgresql/data
+
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./init-scripts/mysql:/docker-entrypoint-initdb.d
+      - mysql-data:/var/lib/mysql
+
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpass
+      MONGO_INITDB_DATABASE: testdb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./init-scripts/mongodb:/docker-entrypoint-initdb.d
+      - mongodb-data:/data/db
+
+volumes:
+  postgres-data:
+  mysql-data:
+  mongodb-data:
