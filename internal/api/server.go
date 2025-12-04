@@ -4,25 +4,27 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	datasync "github.com/guilherme096/data-sync/pkg/data-sync"
 )
 
 type Server struct {
-	addr string
-	// In the future, we will inject the 'core.Service' here
-	// service core.Service
+	addr   string
+	engine datasync.QueryEngine
 }
 
-func NewServer(addr string) *Server {
+func NewServer(addr string, engine datasync.QueryEngine) *Server {
 	return &Server{
-		addr: addr,
+		addr:   addr,
+		engine: engine,
 	}
 }
 
 func (s *Server) Run() error {
 	mux := http.NewServeMux()
 
-	// Register routes
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("POST /query", s.handleQuery)
 
 	server := &http.Server{
 		Addr:         s.addr,
