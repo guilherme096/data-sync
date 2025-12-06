@@ -6,17 +6,23 @@ import (
 	"time"
 
 	datasync "github.com/guilherme096/data-sync/pkg/data-sync"
+	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
+	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
 )
 
 type Server struct {
-	addr   string
-	engine datasync.QueryEngine
+	addr    string
+	engine  datasync.QueryEngine
+	storage storage.MetadataStorage
+	sync    sync.MetadataSync
 }
 
-func NewServer(addr string, engine datasync.QueryEngine) *Server {
+func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync) *Server {
 	return &Server{
-		addr:   addr,
-		engine: engine,
+		addr:    addr,
+		engine:  engine,
+		storage: storage,
+		sync:    sync,
 	}
 }
 
@@ -25,6 +31,12 @@ func (s *Server) Run() error {
 
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /query", s.handleQuery)
+
+	// metadata
+	mux.HandleFunc("GET /catalogs", s.handleListCatalogs)
+	mux.HandleFunc("GET /catalogs/{name}", s.handleGetCatalog)
+	mux.HandleFunc("GET /catalogs/{name}/schemas", s.handleListSchemas)
+	mux.HandleFunc("POST /sync", s.handleSync)
 
 	server := &http.Server{
 		Addr:         s.addr,

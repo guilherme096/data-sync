@@ -2,86 +2,70 @@
 
 ## Overview
 
-Trino distributed query engine setup with 1 coordinator and 3 workers for cross-database federated queries.
+Metadata sync API service for Trino - automatically discovers and caches catalogs and schemas for fast access via REST API.
+
+Includes Trino distributed query engine setup with 1 coordinator and 3 workers for cross-database federated queries.
 
 
 ## Getting Started
 
-### 1. Start Trino cluster
-
-This creates the `trino-network` that data sources will join:
+### 1. Start all services (Trino + data-sync API)
 
 ```bash
-docker-compose up -d
+docker-compose up -d --build
 ```
 
-### 2. (Optional) Start test data sources
+This starts:
+- Trino coordinator (port 8080)
+- 3 Trino workers
+- data-sync API service (port 8081)
 
-**Important:** Trino must be started first to create the shared network.
 
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/catalogs` | List all cached catalogs |
+| GET | `/catalogs/{name}` | Get specific catalog details |
+| GET | `/catalogs/{name}/schemas` | List schemas for a catalog |
+| POST | `/sync` | Manually trigger metadata sync |
+| POST | `/query` | Execute Trino query directly |
+
+### Examples
+
+#### List all catalogs
 ```bash
-cd data-sources
-docker-compose up -d
-cd ..
+curl http://localhost:8081/catalogs
 ```
 
-### 3. Connect to Trino
+Response:
+```json
+[
+  {"Name": "mongodb", "Metadata": {}},
+  {"Name": "mysql", "Metadata": {}},
+  {"Name": "postgresql", "Metadata": {}},
+  {"Name": "system", "Metadata": {}}
+]
+```
 
+#### Get schemas for a catalog
 ```bash
-docker exec -it trino-coordinator trino
+curl http://localhost:8081/catalogs/system/schemas
 ```
 
-
-### Dynamic Catalog Management
-
-You can also add catalogs dynamically via SQL (requires `catalog.management=dynamic` in config):
-
-```sql
-CREATE CATALOG newdb USING postgresql
-WITH (
-    "connection-url" = 'jdbc:postgresql://host:5432/database',
-    "connection-user" = 'user',
-    "connection-password" = 'password'
-);
+Response:
+```json
+[
+  {"Name": "information_schema", "CatalogName": "system", "Metadata": {}},
+  {"Name": "jdbc", "CatalogName": "system", "Metadata": {}},
+  {"Name": "metadata", "CatalogName": "system", "Metadata": {}},
+  {"Name": "runtime", "CatalogName": "system", "Metadata": {}}
+]
 ```
 
-## Query Examples
-
-### List available catalogs
-```sql
-SHOW CATALOGS;
-```
-
-### Query specific data source
-```sql
--- PostgreSQL
-SELECT * FROM postgresql.public.customers LIMIT 5;
-
--- MySQL
-SELECT * FROM mysql.testdb.products LIMIT 5;
-
--- MongoDB
-SELECT * FROM mongodb.testdb.reviews LIMIT 5;
-```
-
-### Cross-Database Query
-```sql
-SELECT
-    c.name as customer_name,
-    c.country as customer_country,
-    o.product_name as ordered_product,
-    p.name as product_full_name,
-    p.category,
-    r.rating,
-    r.comment
-FROM postgresql.public.orders o
-JOIN postgresql.public.customers c ON o.customer_id = c.id
-CROSS JOIN mysql.testdb.products p
-LEFT JOIN mongodb.testdb.reviews r ON p.id = r.product_id
-WHERE (
-    LOWER(p.name) LIKE '%' || LOWER(o.product_name) || '%'
-    OR LOWER(o.product_name) LIKE '%' || LOWER(SPLIT_PART(p.name, ' ', 1)) || '%'
-)
-ORDER BY c.name, r.rating DESC NULLS LAST
-LIMIT 10;
+#### Trigger manual sync
+```bash
+curl -X POST http://localhost:8081/sync
 ```
