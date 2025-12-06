@@ -120,3 +120,73 @@ func (m *MemoryMetadataStorage) ListSchemas(catalogName string) ([]*models.Schem
 
 	return schemas, nil
 }
+
+func (m *MemoryMetadataStorage) UpdateCatalog(catalog *models.Catalog) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if catalog.Name == "" {
+		return fmt.Errorf("catalog name cannot be empty")
+	}
+
+	if _, exists := m.catalogs[catalog.Name]; !exists {
+		return fmt.Errorf("catalog '%s' not found", catalog.Name)
+	}
+
+	m.catalogs[catalog.Name] = catalog
+	return nil
+}
+
+func (m *MemoryMetadataStorage) UpsertCatalog(catalog *models.Catalog) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if catalog.Name == "" {
+		return fmt.Errorf("catalog name cannot be empty")
+	}
+
+	m.catalogs[catalog.Name] = catalog
+	return nil
+}
+
+func (m *MemoryMetadataStorage) UpdateSchema(schema *models.Schema) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if schema.CatalogName == "" || schema.Name == "" {
+		return fmt.Errorf("catalog name and schema name cannot be empty")
+	}
+
+	catalogSchemas, exists := m.schemas[schema.CatalogName]
+	if !exists {
+		return fmt.Errorf("no schemas found for catalog '%s'", schema.CatalogName)
+	}
+
+	if _, exists := catalogSchemas[schema.Name]; !exists {
+		return fmt.Errorf("schema '%s' not found in catalog '%s'", schema.Name, schema.CatalogName)
+	}
+
+	m.schemas[schema.CatalogName][schema.Name] = schema
+	return nil
+}
+
+func (m *MemoryMetadataStorage) UpsertSchema(schema *models.Schema) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if schema.CatalogName == "" || schema.Name == "" {
+		return fmt.Errorf("catalog name and schema name cannot be empty")
+	}
+
+	if _, exists := m.catalogs[schema.CatalogName]; !exists {
+		return fmt.Errorf("catalog '%s' not found", schema.CatalogName)
+	}
+
+	// initialize nested map if needed
+	if m.schemas[schema.CatalogName] == nil {
+		m.schemas[schema.CatalogName] = make(map[string]*models.Schema)
+	}
+
+	m.schemas[schema.CatalogName][schema.Name] = schema
+	return nil
+}
