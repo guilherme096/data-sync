@@ -1,14 +1,12 @@
 package models
 
 type Catalog struct {
-	ID       int
 	Name     string
-	metadata string
+	Metadata map[string]string
 }
 
 type Schema struct {
-	ID        int
-	Name      string
-	CatalogID int
-	metadata  string
+	Name        string
+	CatalogName string
+	Metadata    map[string]string
 }

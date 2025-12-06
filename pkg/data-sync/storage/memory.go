@@ -9,18 +9,14 @@ import (
 
 type MemoryMetadataStorage struct {
 	mu       sync.RWMutex
-	catalogs map[int]*models.Catalog
-	schemas  map[int]*models.Schema
-	nextCatalogID int
-	nextSchemaID  int
+	catalogs map[string]*models.Catalog
+	schemas  map[string]map[string]*models.Schema
 }
 
 func NewMemoryMetadataStorage() *MemoryMetadataStorage {
 	return &MemoryMetadataStorage{
-		catalogs: make(map[int]*models.Catalog),
-		schemas:  make(map[int]*models.Schema),
-		nextCatalogID: 1,
-		nextSchemaID:  1,
+		catalogs: make(map[string]*models.Catalog),
+		schemas:  make(map[string]map[string]*models.Schema),
 	}
 }
 
@@ -28,20 +24,25 @@ func (m *MemoryMetadataStorage) CreateCatalog(catalog *models.Catalog) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	catalog.ID = m.nextCatalogID
-	m.catalogs[catalog.ID] = catalog
-	m.nextCatalogID++
+	if catalog.Name == "" {
+		return fmt.Errorf("catalog name cannot be empty")
+	}
 
+	if _, exists := m.catalogs[catalog.Name]; exists {
+		return fmt.Errorf("catalog '%s' already exists", catalog.Name)
+	}
+
+	m.catalogs[catalog.Name] = catalog
 	return nil
 }
 
-func (m *MemoryMetadataStorage) GetCatalog(id int) (*models.Catalog, error) {
+func (m *MemoryMetadataStorage) GetCatalog(name string) (*models.Catalog, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	catalog, exists := m.catalogs[id]
+	catalog, exists := m.catalogs[name]
 	if !exists {
-		return nil, fmt.Errorf("catalog with id %d not found", id)
+		return nil, fmt.Errorf("catalog '%s' not found", name)
 	}
 
 	return catalog, nil
@@ -63,39 +64,58 @@ func (m *MemoryMetadataStorage) CreateSchema(schema *models.Schema) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if catalog exists
-	if _, exists := m.catalogs[schema.CatalogID]; !exists {
-		return fmt.Errorf("catalog with id %d not found", schema.CatalogID)
+	if schema.CatalogName == "" || schema.Name == "" {
+		return fmt.Errorf("catalog name and schema name cannot be empty")
 	}
 
-	schema.ID = m.nextSchemaID
-	m.schemas[schema.ID] = schema
-	m.nextSchemaID++
+	// Check if catalog exists
+	if _, exists := m.catalogs[schema.CatalogName]; !exists {
+		return fmt.Errorf("catalog '%s' not found", schema.CatalogName)
+	}
 
+	// Initialize nested map if needed
+	if m.schemas[schema.CatalogName] == nil {
+		m.schemas[schema.CatalogName] = make(map[string]*models.Schema)
+	}
+
+	// Check if schema already exists
+	if _, exists := m.schemas[schema.CatalogName][schema.Name]; exists {
+		return fmt.Errorf("schema '%s' already exists in catalog '%s'", schema.Name, schema.CatalogName)
+	}
+
+	m.schemas[schema.CatalogName][schema.Name] = schema
 	return nil
 }
 
-func (m *MemoryMetadataStorage) GetSchema(id int) (*models.Schema, error) {
+func (m *MemoryMetadataStorage) GetSchema(catalogName, schemaName string) (*models.Schema, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	schema, exists := m.schemas[id]
+	catalogSchemas, exists := m.schemas[catalogName]
 	if !exists {
-		return nil, fmt.Errorf("schema with id %d not found", id)
+		return nil, fmt.Errorf("no schemas found for catalog '%s'", catalogName)
+	}
+
+	schema, exists := catalogSchemas[schemaName]
+	if !exists {
+		return nil, fmt.Errorf("schema '%s' not found in catalog '%s'", schemaName, catalogName)
 	}
 
 	return schema, nil
 }
 
-func (m *MemoryMetadataStorage) ListSchemas(catalogID int) ([]*models.Schema, error) {
+func (m *MemoryMetadataStorage) ListSchemas(catalogName string) ([]*models.Schema, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	schemas := make([]*models.Schema, 0)
-	for _, schema := range m.schemas {
-		if schema.CatalogID == catalogID {
-			schemas = append(schemas, schema)
-		}
+	catalogSchemas, exists := m.schemas[catalogName]
+	if !exists {
+		return []*models.Schema{}, nil
+	}
+
+	schemas := make([]*models.Schema, 0, len(catalogSchemas))
+	for _, schema := range catalogSchemas {
+		schemas = append(schemas, schema)
 	}
 
 	return schemas, nil
