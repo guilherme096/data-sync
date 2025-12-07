@@ -1,35 +1,57 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { RouterProvider, createRouter, createRootRoute, createRoute } from '@tanstack/react-router'
+import { MainLayout } from './layouts/MainLayout'
+import { QueryPage } from './pages/QueryPage'
+
+// 1. Create the root route (wraps everything)
+const rootRoute = createRootRoute({
+  component: MainLayout,
+})
+
+// 2. Create the index route (Home / QueryPage)
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: QueryPage,
+})
+
+// Placeholders for other routes
+const schemaRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/schema',
+  component: () => (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+      <h2 className="text-2xl font-bold">Schema Studio</h2>
+      <p className="text-muted-foreground">Mapping interface coming soon.</p>
+    </div>
+  ),
+})
+
+const inventoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/inventory',
+  component: () => (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+      <h2 className="text-2xl font-bold">Data Inventory</h2>
+      <p className="text-muted-foreground">Catalog browser coming soon.</p>
+    </div>
+  ),
+})
+
+// 3. Create the route tree
+const routeTree = rootRoute.addChildren([indexRoute, schemaRoute, inventoryRoute])
+
+// 4. Create the router
+const router = createRouter({ routeTree })
+
+// 5. Register the router for type safety
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router
+  }
+}
 
 function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+  return <RouterProvider router={router} />
 }
 
 export default App
