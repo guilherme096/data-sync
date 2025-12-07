@@ -7,10 +7,12 @@ import (
 	"github.com/guilherme096/data-sync/pkg/data-sync/models"
 )
 
-// MetadataDiscovery discovers catalogs and schemas from Trino
+// MetadataDiscovery discovers catalogs, schemas, tables, and columns from Trino
 type MetadataDiscovery interface {
 	DiscoverCatalogs() ([]*models.Catalog, error)
 	DiscoverSchemas(catalogName string) ([]*models.Schema, error)
+	DiscoverTables(catalogName, schemaName string) ([]*models.Table, error)
+	DiscoverColumns(catalogName, schemaName, tableName string) ([]*models.Column, error)
 }
 
 type trinoMetadataDiscovery struct {
@@ -63,4 +65,53 @@ func (d *trinoMetadataDiscovery) DiscoverSchemas(catalogName string) ([]*models.
 	}
 
 	return schemas, nil
+}
+
+func (d *trinoMetadataDiscovery) DiscoverTables(catalogName, schemaName string) ([]*models.Table, error) {
+	query := fmt.Sprintf("SHOW TABLES FROM %s.%s", catalogName, schemaName)
+	result, err := d.engine.ExecuteQuery(query, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover tables for catalog %s and schema %s: %w", catalogName, schemaName, err)
+	}
+
+	tables := make([]*models.Table, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if tableName, ok := row["Table"].(string); ok {
+			tables = append(tables, &models.Table{
+				Name:        tableName,
+				SchemaName:  schemaName,
+				CatalogName: catalogName,
+				Metadata:    make(map[string]string),
+			})
+		}
+	}
+
+	return tables, nil
+}
+
+func (d *trinoMetadataDiscovery) DiscoverColumns(catalogName, schemaName, tableName string) ([]*models.Column, error) {
+	query := fmt.Sprintf("DESCRIBE %s.%s.%s", catalogName, schemaName, tableName)
+	result, err := d.engine.ExecuteQuery(query, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover columns for table %s.%s.%s: %w", catalogName, schemaName, tableName, err)
+	}
+
+	columns := make([]*models.Column, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		columnName, nameOk := row["Column"].(string)
+		dataType, typeOk := row["Type"].(string)
+
+		if nameOk && typeOk {
+			columns = append(columns, &models.Column{
+				Name:        columnName,
+				TableName:   tableName,
+				SchemaName:  schemaName,
+				CatalogName: catalogName,
+				DataType:    dataType,
+				Metadata:    make(map[string]string),
+			})
+		}
+	}
+
+	return columns, nil
 }
