@@ -64,7 +64,7 @@ func main() {
 		log.Println("Initial metadata sync completed successfully")
 	}
 
-	srv := api.NewServer(":"+port, engine, metadataStorage, syncService)
+	srv := api.NewServer(":"+port, engine, metadataStorage, syncService, metadataDiscovery)
 	if err := srv.Run(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
