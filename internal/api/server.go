@@ -9,6 +9,7 @@ import (
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
+	"github.com/guilherme096/data-sync/internal/api/routers"
 )
 
 type Server struct {
@@ -32,18 +33,21 @@ func NewServer(addr string, engine datasync.QueryEngine, storage storage.Metadat
 func (s *Server) Run() error {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("POST /query", s.handleQuery)
+	// Register all routers
+	healthRouter := routers.NewHealthRouter()
+	healthRouter.RegisterRoutes(mux)
 
-	// metadata
-	mux.HandleFunc("GET /catalogs", s.handleListCatalogs)
-	mux.HandleFunc("GET /catalogs/{name}", s.handleGetCatalog)
-	mux.HandleFunc("GET /catalogs/{name}/schemas", s.handleListSchemas)
-	mux.HandleFunc("POST /sync", s.handleSync)
+	queryRouter := routers.NewQueryRouter(s.engine)
+	queryRouter.RegisterRoutes(mux)
 
-	// discovery
-	mux.HandleFunc("GET /discover/catalogs/{catalog}/schemas/{schema}/tables", s.handleDiscoverTables)
-	mux.HandleFunc("GET /discover/catalogs/{catalog}/schemas/{schema}/tables/{table}/columns", s.handleDiscoverColumns)
+	catalogsRouter := routers.NewCatalogsRouter(s.storage)
+	catalogsRouter.RegisterRoutes(mux)
+
+	discoveryRouter := routers.NewDiscoveryRouter(s.discovery)
+	discoveryRouter.RegisterRoutes(mux)
+
+	syncRouter := routers.NewSyncRouter(s.sync)
+	syncRouter.RegisterRoutes(mux)
 
 	server := &http.Server{
 		Addr:         s.addr,
