@@ -9,6 +9,22 @@ export type Schema = {
   Metadata: Record<string, string>;
 };
 
+export type Table = {
+  Name: string;
+  SchemaName: string;
+  CatalogName: string;
+  Metadata: Record<string, string>;
+};
+
+export type Column = {
+  Name: string;
+  TableName: string;
+  SchemaName: string;
+  CatalogName: string;
+  DataType: string;
+  Metadata: Record<string, string>;
+};
+
 export type QueryResult = {
   Rows: Record<string, unknown>[] | null;
 };
@@ -72,6 +88,24 @@ export const api = {
     if (!res.ok) {
         const errText = await res.text();
         throw new Error(errText || 'Sync failed');
+    }
+    return res.json();
+  },
+
+  discoverTables: async (catalogName: string, schemaName: string): Promise<Table[]> => {
+    const res = await fetch(`${API_BASE}/discover/catalogs/${catalogName}/schemas/${schemaName}/tables`);
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `Failed to discover tables for ${catalogName}.${schemaName}`);
+    }
+    return res.json();
+  },
+
+  discoverColumns: async (catalogName: string, schemaName: string, tableName: string): Promise<Column[]> => {
+    const res = await fetch(`${API_BASE}/discover/catalogs/${catalogName}/schemas/${schemaName}/tables/${tableName}/columns`);
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `Failed to discover columns for ${catalogName}.${schemaName}.${tableName}`);
     }
     return res.json();
   }

@@ -1,200 +1,295 @@
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useQuery, useMutation, QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { api, type Catalog, type Schema } from "@/lib/api"
-import { useState } from "react"
-import { Zap, Database } from "lucide-react"
+import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel } from "@/lib/api"
+import { useState, useMemo } from "react"
+import { Zap, Search } from "lucide-react"
 
-// Create a client
 const queryClient = new QueryClient();
+
+function TableItem({ catalogName, schemaName, tableName }: { catalogName: string; schemaName: string; tableName: string }) {
+  const { data: columns, isLoading } = useQuery<ColumnModel[], Error>({
+    queryKey: ['columns', catalogName, schemaName, tableName],
+    queryFn: () => api.discoverColumns(catalogName, schemaName, tableName),
+  });
+
+  return (
+    <div className="border-b">
+      <div className="py-2 px-3 font-medium">{tableName}</div>
+      <div className="pb-2 px-3 pl-9 bg-muted/10">
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground py-1">Loading...</div>
+        ) : columns && columns.length > 0 ? (
+          <div className="space-y-0.5">
+            {columns.map((column) => (
+              <div key={column.Name} className="flex items-baseline gap-3 text-sm py-0.5">
+                <span className="min-w-[180px]">{column.Name}</span>
+                <code className="text-xs bg-background px-1.5 py-0.5 rounded font-mono text-muted-foreground">
+                  {column.DataType}
+                </code>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground py-1">No columns</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SchemaSection({ catalogName, schemaName, tableSearch }: { catalogName: string; schemaName: string; tableSearch: string }) {
+  const { data: tables, isLoading } = useQuery<TableModel[], Error>({
+    queryKey: ['tables', catalogName, schemaName],
+    queryFn: () => api.discoverTables(catalogName, schemaName),
+  });
+
+  const filteredTables = useMemo(() => {
+    if (!tables) return [];
+    if (!tableSearch) return tables;
+    return tables.filter(table =>
+      table.Name.toLowerCase().includes(tableSearch.toLowerCase())
+    );
+  }, [tables, tableSearch]);
+
+  if (isLoading) return <div className="text-sm text-muted-foreground py-2">Loading tables...</div>;
+  if (!filteredTables || filteredTables.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="text-sm font-semibold text-muted-foreground mb-2 px-3">
+        {catalogName} › {schemaName}
+      </div>
+      <div>
+        {filteredTables.map((table) => (
+          <TableItem
+            key={table.Name}
+            catalogName={catalogName}
+            schemaName={schemaName}
+            tableName={table.Name}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CatalogSection({ catalogName, tableSearch }: { catalogName: string; tableSearch: string }) {
+  const { data: schemas, isLoading } = useQuery<Schema[], Error>({
+    queryKey: ['schemas', catalogName],
+    queryFn: () => api.listSchemas(catalogName),
+  });
+
+  if (isLoading) return <div className="text-sm text-muted-foreground py-2">Loading schemas...</div>;
+  if (!schemas || schemas.length === 0) return null;
+
+  return (
+    <>
+      {schemas.map((schema) => (
+        <SchemaSection
+          key={schema.Name}
+          catalogName={catalogName}
+          schemaName={schema.Name}
+          tableSearch={tableSearch}
+        />
+      ))}
+    </>
+  );
+}
 
 function InventoryPageContent() {
   const [selectedCatalogName, setSelectedCatalogName] = useState<string | null>(null);
+  const [selectedSchemaName, setSelectedSchemaName] = useState<string | null>(null);
+  const [tableSearch, setTableSearch] = useState("");
 
-  // Fetch catalogs
-  const { data: catalogs, isLoading: isLoadingCatalogs, isError: isErrorCatalogs, error: catalogsError } = useQuery<Catalog[], Error>({
+  const { data: catalogs, isLoading: isLoadingCatalogs } = useQuery<Catalog[], Error>({
     queryKey: ['catalogs'],
     queryFn: api.listCatalogs,
   });
 
-  // Fetch selected catalog details
-  const { data: selectedCatalog, isLoading: isLoadingSelectedCatalog, isError: isErrorSelectedCatalog, error: selectedCatalogError } = useQuery<Catalog, Error>({
-    queryKey: ['catalog', selectedCatalogName],
-    queryFn: () => api.getCatalog(selectedCatalogName!),
-    enabled: !!selectedCatalogName, // Only run if a catalog is selected
-  });
-
-  // Fetch schemas for selected catalog
-  const { data: schemas, isLoading: isLoadingSchemas, isError: isErrorSchemas, error: schemasError } = useQuery<Schema[], Error>({
+  const { data: schemas, isLoading: isLoadingSchemas } = useQuery<Schema[], Error>({
     queryKey: ['schemas', selectedCatalogName],
     queryFn: () => api.listSchemas(selectedCatalogName!),
-    enabled: !!selectedCatalogName, // Only run if a catalog is selected
+    enabled: !!selectedCatalogName && selectedCatalogName !== '__ALL__',
   });
 
-  // Sync mutation
+  const { data: tables, isLoading: isLoadingTables } = useQuery<TableModel[], Error>({
+    queryKey: ['tables', selectedCatalogName, selectedSchemaName],
+    queryFn: () => api.discoverTables(selectedCatalogName!, selectedSchemaName!),
+    enabled: !!selectedCatalogName && selectedCatalogName !== '__ALL__' && !!selectedSchemaName && selectedSchemaName !== '__ALL__',
+  });
+
   const syncMutation = useMutation({
     mutationFn: api.syncMetadata,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catalogs'] });
-      // Invalidate schemas and selected catalog details to refresh if a catalog is selected
       if (selectedCatalogName) {
-        queryClient.invalidateQueries({ queryKey: ['catalog', selectedCatalogName] });
         queryClient.invalidateQueries({ queryKey: ['schemas', selectedCatalogName] });
       }
-      alert('Metadata sync completed successfully!'); // TODO: Replace with a proper toast notification
-    },
-    onError: (error) => {
-      alert(`Metadata sync failed: ${error.message}`); // TODO: Replace with a proper toast notification
     },
   });
 
-  const handleSync = () => {
-    syncMutation.mutate();
+  const filteredTables = useMemo(() => {
+    if (!tables) return [];
+    if (!tableSearch) return tables;
+    return tables.filter(table =>
+      table.Name.toLowerCase().includes(tableSearch.toLowerCase())
+    );
+  }, [tables, tableSearch]);
+
+  const handleCatalogChange = (value: string) => {
+    setSelectedCatalogName(value);
+    setSelectedSchemaName(null);
   };
 
+  const handleSchemaChange = (value: string) => {
+    setSelectedSchemaName(value);
+  };
+
+  const showAllCatalogs = selectedCatalogName === '__ALL__';
+  const showAllSchemas = selectedSchemaName === '__ALL__';
+  const showSingleSchema = selectedCatalogName && selectedCatalogName !== '__ALL__' && selectedSchemaName && selectedSchemaName !== '__ALL__';
+
   return (
-    <div className="h-full w-full bg-muted/20">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full rounded-lg border">
-        {/* Left Panel: Catalog List */}
-        <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-          <div className="h-full p-4 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-                <Database className="w-5 h-5 text-primary" />
-                Catalogs
-              </h2>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleSync} 
-                disabled={syncMutation.isPending}
-                className="flex items-center gap-1"
-              >
-                {syncMutation.isPending ? (
-                  <>
-                    <Zap className="w-3 h-3 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-3 h-3" />
-                    Sync Now
-                  </>
-                )}
-              </Button>
-            </div>
-            <Separator />
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {isLoadingCatalogs && <div className="text-sm text-muted-foreground">Loading catalogs...</div>}
-              {isErrorCatalogs && <div className="text-sm text-destructive">Error loading catalogs: {catalogsError?.message}</div>}
-              {catalogs?.length === 0 && !isLoadingCatalogs && <div className="text-sm text-muted-foreground">No catalogs found.</div>}
-              {catalogs?.map((catalog) => (
-                <Card 
-                  key={catalog.Name} 
-                  className={`cursor-pointer hover:bg-muted transition-colors ${selectedCatalogName === catalog.Name ? 'bg-muted border-primary' : ''}`}
-                  onClick={() => setSelectedCatalogName(catalog.Name)}
-                >
-                  <CardContent className="p-3 flex items-center justify-between">
-                    <span className="font-medium">{catalog.Name}</span>
-                    {/* Could add a status indicator here later */}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </ResizablePanel>
+    <div className="h-full w-full flex flex-col">
+      {/* Top Bar */}
+      <div className="border-b bg-background p-4">
+        <div className="flex items-center gap-4">
+          <Select value={selectedCatalogName || ""} onValueChange={handleCatalogChange}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select catalog..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__ALL__">All Catalogs</SelectItem>
+              {isLoadingCatalogs ? (
+                <SelectItem value="_loading" disabled>Loading...</SelectItem>
+              ) : (
+                catalogs?.map((catalog) => (
+                  <SelectItem key={catalog.Name} value={catalog.Name}>
+                    {catalog.Name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
 
-        <ResizableHandle withHandle />
+          <Select
+            value={selectedSchemaName || ""}
+            onValueChange={handleSchemaChange}
+            disabled={!selectedCatalogName || selectedCatalogName === '__ALL__'}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select schema..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__ALL__">All Schemas</SelectItem>
+              {isLoadingSchemas ? (
+                <SelectItem value="_loading" disabled>Loading...</SelectItem>
+              ) : (
+                schemas?.map((schema) => (
+                  <SelectItem key={schema.Name} value={schema.Name}>
+                    {schema.Name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
 
-        {/* Right Panel: Catalog Details and Schemas */}
-        <ResizablePanel defaultSize={75}>
-          <div className="h-full p-4 flex flex-col gap-4">
-            <h2 className="text-lg font-semibold tracking-tight">
-              {selectedCatalogName ? `Catalog: ${selectedCatalogName}` : 'Select a Catalog'}
-            </h2>
-            <Separator />
+          <div className="flex-1" />
 
-            {!selectedCatalogName ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                <p>Select a catalog from the left panel to view its details.</p>
-              </div>
+          <Button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            variant="outline"
+            size="sm"
+          >
+            {syncMutation.isPending ? (
+              <>
+                <Zap className="w-4 h-4 mr-2 animate-spin" />
+                Syncing...
+              </>
             ) : (
-              <div className="flex-1 overflow-y-auto space-y-6">
-                {/* Catalog Metadata */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-md">Metadata</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingSelectedCatalog && <div className="text-sm text-muted-foreground">Loading metadata...</div>}
-                    {isErrorSelectedCatalog && <div className="text-sm text-destructive">Error loading metadata: {selectedCatalogError?.message}</div>}
-                    {selectedCatalog && Object.keys(selectedCatalog.Metadata).length > 0 ? (
-                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        {Object.entries(selectedCatalog.Metadata).map(([key, value]) => (
-                          <div key={key} className="col-span-1">
-                            <dt className="font-medium text-muted-foreground">{key}:</dt>
-                            <dd className="break-words">{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : (
-                      !isLoadingSelectedCatalog && !isErrorSelectedCatalog && <div className="text-sm text-muted-foreground">No metadata available.</div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Schemas */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-md">Schemas</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingSchemas && <div className="text-sm text-muted-foreground">Loading schemas...</div>}
-                    {isErrorSchemas && <div className="text-sm text-destructive">Error loading schemas: {schemasError?.message}</div>}
-                    {schemas && schemas.length > 0 ? (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Metadata</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {schemas.map((schema) => (
-                            <TableRow key={schema.Name}>
-                              <TableCell className="font-medium">{schema.Name}</TableCell>
-                              <TableCell>
-                                {Object.keys(schema.Metadata).length > 0 ? (
-                                  <ul className="list-disc list-inside text-xs text-muted-foreground">
-                                    {Object.entries(schema.Metadata).map(([key, value]) => (
-                                      <li key={`${schema.Name}-${key}`}>{key}: {value}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">No metadata</span>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    ) : (
-                      !isLoadingSchemas && !isErrorSchemas && <div className="text-sm text-muted-foreground">No schemas found for this catalog.</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+              <>
+                <Zap className="w-4 h-4 mr-2" />
+                Sync
+              </>
             )}
+          </Button>
+        </div>
+
+        {(selectedSchemaName || selectedCatalogName === '__ALL__') && (
+          <div className="mt-3 relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tables..."
+              value={tableSearch}
+              onChange={(e) => setTableSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        )}
+      </div>
+
+      {/* Tables List */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {!selectedCatalogName ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            <p>Select a catalog to view tables</p>
+          </div>
+        ) : showAllCatalogs ? (
+          <div className="max-w-4xl">
+            {catalogs?.map((catalog) => (
+              <CatalogSection
+                key={catalog.Name}
+                catalogName={catalog.Name}
+                tableSearch={tableSearch}
+              />
+            ))}
+          </div>
+        ) : !selectedSchemaName ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            <p>Select a schema to view tables</p>
+          </div>
+        ) : showAllSchemas ? (
+          <div className="max-w-4xl">
+            {schemas?.map((schema) => (
+              <SchemaSection
+                key={schema.Name}
+                catalogName={selectedCatalogName}
+                schemaName={schema.Name}
+                tableSearch={tableSearch}
+              />
+            ))}
+          </div>
+        ) : isLoadingTables ? (
+          <div className="text-muted-foreground">Loading tables...</div>
+        ) : filteredTables.length === 0 ? (
+          <div className="text-muted-foreground">
+            {tableSearch ? "No tables match your search" : "No tables found"}
+          </div>
+        ) : (
+          <div className="max-w-4xl">
+            <div className="text-sm font-semibold text-muted-foreground mb-2 px-3">
+              {selectedCatalogName} › {selectedSchemaName}
+            </div>
+            {filteredTables.map((table) => (
+              <TableItem
+                key={table.Name}
+                catalogName={selectedCatalogName!}
+                schemaName={selectedSchemaName!}
+                tableName={table.Name}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
