@@ -11,6 +11,8 @@ import (
 type mockQueryEngine struct {
 	catalogsResult datasync.QueryResult
 	schemasResult  datasync.QueryResult
+	tablesResult   datasync.QueryResult
+	columnsResult  datasync.QueryResult
 	shouldError    bool
 }
 
@@ -25,7 +27,21 @@ func (m *mockQueryEngine) ExecuteQuery(query string, params map[string]interface
 	}
 
 	// Return schemas for SHOW SCHEMAS FROM queries
-	return m.schemasResult, nil
+	if len(query) >= 17 && query[:17] == "SHOW SCHEMAS FROM" {
+		return m.schemasResult, nil
+	}
+
+	// Return tables for SHOW TABLES FROM queries
+	if len(query) >= 16 && query[:16] == "SHOW TABLES FROM" {
+		return m.tablesResult, nil
+	}
+
+	// Return columns for DESCRIBE queries
+	if len(query) >= 8 && query[:8] == "DESCRIBE" {
+		return m.columnsResult, nil
+	}
+
+	return datasync.QueryResult{}, fmt.Errorf("unexpected query: %s", query)
 }
 
 func TestDiscoverCatalogs_Success(t *testing.T) {
@@ -206,5 +222,203 @@ func TestDiscoverSchemas_InvalidDataType(t *testing.T) {
 	// Should skip the invalid entry
 	if len(schemas) != 2 {
 		t.Errorf("Expected 2 schemas (skipping invalid entry), got %d", len(schemas))
+	}
+}
+
+func TestDiscoverTables_Success(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		tablesResult: datasync.QueryResult{
+			Rows: []map[string]interface{}{
+				{"Table": "users"},
+				{"Table": "products"},
+				{"Table": "orders"},
+			},
+		},
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	tables, err := discovery.DiscoverTables("postgresql", "public")
+
+	if err != nil {
+		t.Fatalf("DiscoverTables failed: %v", err)
+	}
+
+	if len(tables) != 3 {
+		t.Errorf("Expected 3 tables, got %d", len(tables))
+	}
+
+	expectedNames := []string{"users", "products", "orders"}
+	for i, table := range tables {
+		if table.Name != expectedNames[i] {
+			t.Errorf("Expected table name '%s', got '%s'", expectedNames[i], table.Name)
+		}
+		if table.SchemaName != "public" {
+			t.Errorf("Expected schema name 'public', got '%s'", table.SchemaName)
+		}
+		if table.CatalogName != "postgresql" {
+			t.Errorf("Expected catalog name 'postgresql', got '%s'", table.CatalogName)
+		}
+		if table.Metadata == nil {
+			t.Error("Expected Metadata map to be initialized")
+		}
+	}
+}
+
+func TestDiscoverTables_Empty(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		tablesResult: datasync.QueryResult{
+			Rows: []map[string]interface{}{},
+		},
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	tables, err := discovery.DiscoverTables("postgresql", "public")
+
+	if err != nil {
+		t.Fatalf("DiscoverTables failed: %v", err)
+	}
+
+	if len(tables) != 0 {
+		t.Errorf("Expected 0 tables, got %d", len(tables))
+	}
+}
+
+func TestDiscoverTables_Error(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		shouldError: true,
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	_, err := discovery.DiscoverTables("postgresql", "public")
+
+	if err == nil {
+		t.Fatal("Expected error from DiscoverTables, got nil")
+	}
+}
+
+func TestDiscoverTables_InvalidDataType(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		tablesResult: datasync.QueryResult{
+			Rows: []map[string]interface{}{
+				{"Table": "users"},
+				{"Table": 12345}, // Invalid: should be string
+				{"Table": "products"},
+			},
+		},
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	tables, err := discovery.DiscoverTables("postgresql", "public")
+
+	if err != nil {
+		t.Fatalf("DiscoverTables failed: %v", err)
+	}
+
+	// Should skip the invalid entry
+	if len(tables) != 2 {
+		t.Errorf("Expected 2 tables (skipping invalid entry), got %d", len(tables))
+	}
+}
+
+func TestDiscoverColumns_Success(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		columnsResult: datasync.QueryResult{
+			Rows: []map[string]interface{}{
+				{"Column": "id", "Type": "bigint"},
+				{"Column": "name", "Type": "varchar(255)"},
+				{"Column": "created_at", "Type": "timestamp"},
+			},
+		},
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	columns, err := discovery.DiscoverColumns("postgresql", "public", "users")
+
+	if err != nil {
+		t.Fatalf("DiscoverColumns failed: %v", err)
+	}
+
+	if len(columns) != 3 {
+		t.Errorf("Expected 3 columns, got %d", len(columns))
+	}
+
+	expectedNames := []string{"id", "name", "created_at"}
+	expectedTypes := []string{"bigint", "varchar(255)", "timestamp"}
+	for i, column := range columns {
+		if column.Name != expectedNames[i] {
+			t.Errorf("Expected column name '%s', got '%s'", expectedNames[i], column.Name)
+		}
+		if column.DataType != expectedTypes[i] {
+			t.Errorf("Expected data type '%s', got '%s'", expectedTypes[i], column.DataType)
+		}
+		if column.TableName != "users" {
+			t.Errorf("Expected table name 'users', got '%s'", column.TableName)
+		}
+		if column.SchemaName != "public" {
+			t.Errorf("Expected schema name 'public', got '%s'", column.SchemaName)
+		}
+		if column.CatalogName != "postgresql" {
+			t.Errorf("Expected catalog name 'postgresql', got '%s'", column.CatalogName)
+		}
+		if column.Metadata == nil {
+			t.Error("Expected Metadata map to be initialized")
+		}
+	}
+}
+
+func TestDiscoverColumns_Empty(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		columnsResult: datasync.QueryResult{
+			Rows: []map[string]interface{}{},
+		},
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	columns, err := discovery.DiscoverColumns("postgresql", "public", "users")
+
+	if err != nil {
+		t.Fatalf("DiscoverColumns failed: %v", err)
+	}
+
+	if len(columns) != 0 {
+		t.Errorf("Expected 0 columns, got %d", len(columns))
+	}
+}
+
+func TestDiscoverColumns_Error(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		shouldError: true,
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	_, err := discovery.DiscoverColumns("postgresql", "public", "users")
+
+	if err == nil {
+		t.Fatal("Expected error from DiscoverColumns, got nil")
+	}
+}
+
+func TestDiscoverColumns_InvalidDataType(t *testing.T) {
+	mockEngine := &mockQueryEngine{
+		columnsResult: datasync.QueryResult{
+			Rows: []map[string]interface{}{
+				{"Column": "id", "Type": "bigint"},
+				{"Column": 12345, "Type": "varchar"}, // Invalid: Column should be string
+				{"Column": "name", "Type": 999},      // Invalid: Type should be string
+				{"Column": "email", "Type": "varchar(255)"},
+			},
+		},
+	}
+
+	discovery := NewTrinoMetadataDiscovery(mockEngine)
+	columns, err := discovery.DiscoverColumns("postgresql", "public", "users")
+
+	if err != nil {
+		t.Fatalf("DiscoverColumns failed: %v", err)
+	}
+
+	// Should skip the invalid entries
+	if len(columns) != 2 {
+		t.Errorf("Expected 2 columns (skipping invalid entries), got %d", len(columns))
 	}
 }

@@ -92,3 +92,54 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		"message": "Metadata sync completed successfully",
 	})
 }
+
+func (s *Server) handleDiscoverTables(w http.ResponseWriter, r *http.Request) {
+	catalogName := r.PathValue("catalog")
+	schemaName := r.PathValue("schema")
+
+	if catalogName == "" {
+		http.Error(w, "catalog name is required", http.StatusBadRequest)
+		return
+	}
+	if schemaName == "" {
+		http.Error(w, "schema name is required", http.StatusBadRequest)
+		return
+	}
+
+	tables, err := s.discovery.DiscoverTables(catalogName, schemaName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tables)
+}
+
+func (s *Server) handleDiscoverColumns(w http.ResponseWriter, r *http.Request) {
+	catalogName := r.PathValue("catalog")
+	schemaName := r.PathValue("schema")
+	tableName := r.PathValue("table")
+
+	if catalogName == "" {
+		http.Error(w, "catalog name is required", http.StatusBadRequest)
+		return
+	}
+	if schemaName == "" {
+		http.Error(w, "schema name is required", http.StatusBadRequest)
+		return
+	}
+	if tableName == "" {
+		http.Error(w, "table name is required", http.StatusBadRequest)
+		return
+	}
+
+	columns, err := s.discovery.DiscoverColumns(catalogName, schemaName, tableName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(columns)
+}
