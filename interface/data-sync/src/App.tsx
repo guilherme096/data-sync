@@ -1,6 +1,7 @@
 import { RouterProvider, createRouter, createRootRoute, createRoute } from '@tanstack/react-router'
 import { MainLayout } from './layouts/MainLayout'
 import { QueryPage } from './pages/QueryPage'
+import { InventoryPage } from './pages/InventoryPage'
 
 // 1. Create the root route (wraps everything)
 const rootRoute = createRootRoute({
@@ -29,12 +30,7 @@ const schemaRoute = createRoute({
 const inventoryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/inventory',
-  component: () => (
-    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-      <h2 className="text-2xl font-bold">Data Inventory</h2>
-      <p className="text-muted-foreground">Catalog browser coming soon.</p>
-    </div>
-  ),
+  component: InventoryPage,
 })
 
 // 3. Create the route tree

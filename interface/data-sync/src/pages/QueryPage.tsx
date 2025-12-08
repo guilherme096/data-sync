@@ -125,7 +125,7 @@ export function QueryPage() {
                         <div className="bg-muted p-2 rounded border font-mono text-xs overflow-x-auto">
                            SELECT * FROM global_customers ORDER BY revenue DESC LIMIT 5;
                         </div>
-                        <Button variant="secondary" size="xs" className="w-full h-7 text-xs">Insert into Editor</Button>
+                        <Button variant="secondary" size="sm" className="w-full h-7 text-xs">Insert into Editor</Button>
                      </div>
                   </div>
 

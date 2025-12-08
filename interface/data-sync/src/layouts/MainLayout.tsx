@@ -1,6 +1,5 @@
 import { Link, Outlet } from '@tanstack/react-router'
 import { Database, Search, Workflow } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 export function MainLayout() {
   return (
