@@ -1,5 +1,5 @@
 import { Link, Outlet } from '@tanstack/react-router'
-import { Database, Search, Workflow } from 'lucide-react'
+import { Database, MessageSquare, Search, Workflow } from 'lucide-react'
 
 export function MainLayout() {
   return (
@@ -11,7 +11,8 @@ export function MainLayout() {
            <h1 className="text-xl font-bold tracking-tight">DataSync</h1>
         </div>
         <nav className="flex-1 px-4 space-y-2">
-           <NavLink to="/" icon={<Search className="w-4 h-4" />} label="Query" />
+           <NavLink to="/" icon={<MessageSquare className="w-4 h-4" />} label="Ask the Data" />
+           <NavLink to="/query" icon={<Search className="w-4 h-4" />} label="Query" />
            <NavLink to="/schema" icon={<Workflow className="w-4 h-4" />} label="Schema Studio" />
            <NavLink to="/inventory" icon={<Database className="w-4 h-4" />} label="Inventory" />
         </nav>

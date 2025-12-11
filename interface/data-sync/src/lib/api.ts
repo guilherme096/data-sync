@@ -270,4 +270,13 @@ export const api = {
       throw new Error(errText || 'Failed to delete column mapping');
     }
   },
+
+  // Chat API - Placeholder until backend is implemented
+  sendChatMessage: async (message: string, _conversationHistory: unknown[]): Promise<string> => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Return placeholder response
+    return `I'm a placeholder assistant. The backend chat API hasn't been implemented yet.\n\nYou asked: "${message}"\n\nOnce the backend is ready, I'll be able to help you query and explore your data using natural language!`;
+  },
 };
