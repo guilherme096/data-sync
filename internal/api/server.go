@@ -49,6 +49,9 @@ func (s *Server) Run() error {
 	syncRouter := routers.NewSyncRouter(s.sync)
 	syncRouter.RegisterRoutes(mux)
 
+	globalRouter := routers.NewGlobalRouter(s.storage)
+	globalRouter.RegisterRoutes(mux)
+
 	server := &http.Server{
 		Addr:         s.addr,
 		Handler:      mux,
