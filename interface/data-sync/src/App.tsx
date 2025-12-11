@@ -2,6 +2,7 @@ import { RouterProvider, createRouter, createRootRoute, createRoute } from '@tan
 import { MainLayout } from './layouts/MainLayout'
 import { QueryPage } from './pages/QueryPage'
 import { InventoryPage } from './pages/InventoryPage'
+import { SchemaStudioPage } from './pages/SchemaStudioPage'
 
 // 1. Create the root route (wraps everything)
 const rootRoute = createRootRoute({
@@ -15,16 +16,11 @@ const indexRoute = createRoute({
   component: QueryPage,
 })
 
-// Placeholders for other routes
+// Schema Studio route
 const schemaRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/schema',
-  component: () => (
-    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-      <h2 className="text-2xl font-bold">Schema Studio</h2>
-      <p className="text-muted-foreground">Mapping interface coming soon.</p>
-    </div>
-  ),
+  component: SchemaStudioPage,
 })
 
 const inventoryRoute = createRoute({

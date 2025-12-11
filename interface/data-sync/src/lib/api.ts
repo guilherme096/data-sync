@@ -25,6 +25,34 @@ export type Column = {
   Metadata: Record<string, string>;
 };
 
+export type GlobalTable = {
+  Name: string;
+  Description: string;
+};
+
+export type GlobalColumn = {
+  GlobalTableName: string;
+  Name: string;
+  DataType: string;
+  Description: string;
+};
+
+export type TableMapping = {
+  GlobalTableName: string;
+  CatalogName: string;
+  SchemaName: string;
+  TableName: string;
+};
+
+export type ColumnMapping = {
+  GlobalTableName: string;
+  GlobalColumnName: string;
+  CatalogName: string;
+  SchemaName: string;
+  TableName: string;
+  ColumnName: string;
+};
+
 export type QueryResult = {
   Rows: Record<string, unknown>[] | null;
 };
@@ -108,5 +136,138 @@ export const api = {
         throw new Error(errText || `Failed to discover columns for ${catalogName}.${schemaName}.${tableName}`);
     }
     return res.json();
-  }
+  },
+
+  // Global Tables API
+  listGlobalTables: async (): Promise<GlobalTable[]> => {
+    const res = await fetch(`${API_BASE}/global/tables`);
+    if (!res.ok) throw new Error('Failed to fetch global tables');
+    return res.json();
+  },
+
+  getGlobalTable: async (name: string): Promise<GlobalTable> => {
+    const res = await fetch(`${API_BASE}/global/tables/${name}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || `Failed to fetch global table ${name}`);
+    }
+    return res.json();
+  },
+
+  createGlobalTable: async (table: { Name: string; Description: string }): Promise<GlobalTable> => {
+    const res = await fetch(`${API_BASE}/global/tables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(table),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to create global table');
+    }
+    return res.json();
+  },
+
+  deleteGlobalTable: async (name: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/global/tables/${name}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to delete global table');
+    }
+  },
+
+  // Global Columns API
+  listGlobalColumns: async (globalTableName: string): Promise<GlobalColumn[]> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/columns`);
+    if (!res.ok) throw new Error(`Failed to fetch columns for ${globalTableName}`);
+    return res.json();
+  },
+
+  createGlobalColumn: async (globalTableName: string, column: { Name: string; DataType: string; Description: string }): Promise<GlobalColumn> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/columns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(column),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to create global column');
+    }
+    return res.json();
+  },
+
+  deleteGlobalColumn: async (globalTableName: string, columnName: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/columns/${columnName}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to delete global column');
+    }
+  },
+
+  // Table Mappings API
+  listTableMappings: async (globalTableName: string): Promise<TableMapping[]> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/mappings/tables`);
+    if (!res.ok) throw new Error(`Failed to fetch table mappings for ${globalTableName}`);
+    return res.json();
+  },
+
+  createTableMapping: async (globalTableName: string, mapping: { CatalogName: string; SchemaName: string; TableName: string }): Promise<TableMapping> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/mappings/tables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mapping),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to create table mapping');
+    }
+    return res.json();
+  },
+
+  deleteTableMapping: async (globalTableName: string, mapping: { CatalogName: string; SchemaName: string; TableName: string }): Promise<void> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/mappings/tables`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mapping),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to delete table mapping');
+    }
+  },
+
+  // Column Mappings API
+  listColumnMappings: async (globalTableName: string, globalColumnName: string): Promise<ColumnMapping[]> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/columns/${globalColumnName}/mappings`);
+    if (!res.ok) throw new Error(`Failed to fetch column mappings`);
+    return res.json();
+  },
+
+  createColumnMapping: async (globalTableName: string, globalColumnName: string, mapping: { CatalogName: string; SchemaName: string; TableName: string; ColumnName: string }): Promise<ColumnMapping> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/columns/${globalColumnName}/mappings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mapping),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to create column mapping');
+    }
+    return res.json();
+  },
+
+  deleteColumnMapping: async (globalTableName: string, globalColumnName: string, mapping: { CatalogName: string; SchemaName: string; TableName: string; ColumnName: string }): Promise<void> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/columns/${globalColumnName}/mappings`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mapping),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to delete column mapping');
+    }
+  },
 };
