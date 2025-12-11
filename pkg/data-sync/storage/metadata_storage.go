@@ -17,6 +17,20 @@ type MetadataStorage interface {
 	GetSchema(catalogName, schemaName string) (*models.Schema, error)
 	ListSchemas(catalogName string) ([]*models.Schema, error)
 
+	// Local table operations (for discovered tables from data sources)
+	CreateTable(table *models.Table) error
+	UpdateTable(table *models.Table) error
+	UpsertTable(table *models.Table) error
+	GetTable(catalogName, schemaName, tableName string) (*models.Table, error)
+	ListTables(catalogName, schemaName string) ([]*models.Table, error)
+
+	// Local column operations (for discovered columns from data sources)
+	CreateColumn(column *models.Column) error
+	UpdateColumn(column *models.Column) error
+	UpsertColumn(column *models.Column) error
+	GetColumn(catalogName, schemaName, tableName, columnName string) (*models.Column, error)
+	ListColumns(catalogName, schemaName, tableName string) ([]*models.Column, error)
+
 	// Global table operations
 	CreateGlobalTable(table *models.GlobalTable) error
 	GetGlobalTable(name string) (*models.GlobalTable, error)
