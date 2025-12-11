@@ -13,3 +13,13 @@ type GlobalColumn struct {
 	DataType        string
 	Description     string
 }
+
+// ColumnRelationship represents a foreign key relationship between global table columns
+type ColumnRelationship struct {
+	SourceGlobalTableName  string
+	SourceGlobalColumnName string
+	TargetGlobalTableName  string
+	TargetGlobalColumnName string
+	RelationshipName       string // Optional: user-defined name
+	Description            string // Optional: description of the relationship
+}
