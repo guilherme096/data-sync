@@ -53,6 +53,15 @@ export type ColumnMapping = {
   ColumnName: string;
 };
 
+export type ColumnRelationship = {
+  SourceGlobalTableName: string;
+  SourceGlobalColumnName: string;
+  TargetGlobalTableName: string;
+  TargetGlobalColumnName: string;
+  RelationshipName?: string;
+  Description?: string;
+};
+
 export type QueryResult = {
   Rows: Record<string, unknown>[] | null;
 };
@@ -268,6 +277,56 @@ export const api = {
     if (!res.ok) {
       const errText = await res.text();
       throw new Error(errText || 'Failed to delete column mapping');
+    }
+  },
+
+  // Column Relationships API
+  listColumnRelationships: async (globalTableName: string): Promise<ColumnRelationship[]> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/relationships`);
+    if (!res.ok) throw new Error(`Failed to fetch relationships for ${globalTableName}`);
+    return res.json();
+  },
+
+  createColumnRelationship: async (
+    globalTableName: string,
+    relationship: {
+      SourceGlobalTableName: string;
+      SourceGlobalColumnName: string;
+      TargetGlobalTableName: string;
+      TargetGlobalColumnName: string;
+      RelationshipName?: string;
+      Description?: string;
+    }
+  ): Promise<ColumnRelationship> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/relationships`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(relationship),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to create column relationship');
+    }
+    return res.json();
+  },
+
+  deleteColumnRelationship: async (
+    globalTableName: string,
+    relationship: {
+      SourceGlobalTableName: string;
+      SourceGlobalColumnName: string;
+      TargetGlobalTableName: string;
+      TargetGlobalColumnName: string;
+    }
+  ): Promise<void> => {
+    const res = await fetch(`${API_BASE}/global/tables/${globalTableName}/relationships`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(relationship),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to delete column relationship');
     }
   },
 };

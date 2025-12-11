@@ -155,7 +155,6 @@ function InventoryPageContent() {
 
   const showAllCatalogs = selectedCatalogName === '__ALL__';
   const showAllSchemas = selectedSchemaName === '__ALL__';
-  const showSingleSchema = selectedCatalogName && selectedCatalogName !== '__ALL__' && selectedSchemaName && selectedSchemaName !== '__ALL__';
 
   return (
     <div className="h-full w-full flex flex-col">
