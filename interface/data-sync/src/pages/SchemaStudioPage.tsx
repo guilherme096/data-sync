@@ -306,6 +306,11 @@ function AddRelationDialog({
     setDescription('')
   }
 
+  // Validate that join columns have matching data types
+  const leftColumnType = leftColumns?.find(col => col.Name === leftColumn)?.DataType
+  const rightColumnType = rightColumns?.find(col => col.Name === rightColumn)?.DataType
+  const doJoinColumnsMatch = relationType === 'UNION' || !leftColumn || !rightColumn || leftColumnType === rightColumnType
+
   const isNameValid = relationName.trim() && !existingRelations.some(r => r.name === relationName)
   const isLeftValid = leftSourceType === 'physical'
     ? (leftCatalog && leftSchema && leftTable)
@@ -315,7 +320,7 @@ function AddRelationDialog({
     : rightRelationId
   const areColumnsValid = relationType === 'UNION' || (leftColumn && rightColumn)
 
-  const isValid = isNameValid && isLeftValid && isRightValid && areColumnsValid
+  const isValid = isNameValid && isLeftValid && isRightValid && areColumnsValid && doJoinColumnsMatch
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -508,48 +513,63 @@ function AddRelationDialog({
 
         {/* Join Columns - appears only when JOIN is selected */}
         {relationType === 'JOIN' && (
-          <div className="grid grid-cols-2 gap-6 mt-4 p-4 border rounded-lg bg-muted/30">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold">Left Join Column</label>
-              <Select
-                value={leftColumn}
-                onValueChange={setLeftColumn}
-                disabled={leftSourceType === 'physical' ? !leftTable : !leftRelationId}
-              >
-                <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
-                <SelectContent>
-                  {leftSourceType === 'physical' && leftColumns?.map(col => (
-                    <SelectItem key={col.Name} value={col.Name}>
-                      {col.Name} ({col.DataType})
-                    </SelectItem>
-                  ))}
-                  {leftSourceType === 'physical' && (!leftColumns || leftColumns.length === 0) && (
-                    <SelectItem value="_no_columns" disabled>No columns available</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+          <div className="space-y-3 mt-4">
+            <div className="grid grid-cols-2 gap-6 p-4 border rounded-lg bg-muted/30">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Left Join Column</label>
+                <Select
+                  value={leftColumn}
+                  onValueChange={setLeftColumn}
+                  disabled={leftSourceType === 'physical' ? !leftTable : !leftRelationId}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
+                  <SelectContent>
+                    {leftSourceType === 'physical' && leftColumns?.map(col => (
+                      <SelectItem key={col.Name} value={col.Name}>
+                        {col.Name} ({col.DataType})
+                      </SelectItem>
+                    ))}
+                    {leftSourceType === 'physical' && (!leftColumns || leftColumns.length === 0) && (
+                      <SelectItem value="_no_columns" disabled>No columns available</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Right Join Column</label>
+                <Select
+                  value={rightColumn}
+                  onValueChange={setRightColumn}
+                  disabled={rightSourceType === 'physical' ? !rightTable : !rightRelationId}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
+                  <SelectContent>
+                    {rightSourceType === 'physical' && rightColumns?.map(col => (
+                      <SelectItem key={col.Name} value={col.Name}>
+                        {col.Name} ({col.DataType})
+                      </SelectItem>
+                    ))}
+                    {rightSourceType === 'physical' && (!rightColumns || rightColumns.length === 0) && (
+                      <SelectItem value="_no_columns" disabled>No columns available</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold">Right Join Column</label>
-              <Select
-                value={rightColumn}
-                onValueChange={setRightColumn}
-                disabled={rightSourceType === 'physical' ? !rightTable : !rightRelationId}
-              >
-                <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
-                <SelectContent>
-                  {rightSourceType === 'physical' && rightColumns?.map(col => (
-                    <SelectItem key={col.Name} value={col.Name}>
-                      {col.Name} ({col.DataType})
-                    </SelectItem>
-                  ))}
-                  {rightSourceType === 'physical' && (!rightColumns || rightColumns.length === 0) && (
-                    <SelectItem value="_no_columns" disabled>No columns available</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Data type mismatch warning */}
+            {leftColumn && rightColumn && leftSourceType === 'physical' && rightSourceType === 'physical' && !doJoinColumnsMatch && (
+              <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                <span className="text-destructive text-sm font-medium">⚠</span>
+                <div className="flex-1 text-sm">
+                  <p className="font-semibold text-destructive">Data type mismatch</p>
+                  <p className="text-destructive/90 mt-1">
+                    Cannot join columns with different data types: <code className="bg-destructive/20 px-1 rounded">{leftColumnType}</code> and <code className="bg-destructive/20 px-1 rounded">{rightColumnType}</code>
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
