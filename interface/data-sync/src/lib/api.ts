@@ -271,12 +271,22 @@ export const api = {
     }
   },
 
-  // Chat API - Placeholder until backend is implemented
+  // Chat API
   sendChatMessage: async (message: string, _conversationHistory: unknown[]): Promise<string> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const res = await fetch(`${API_BASE}/chatbot/message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message }),
+    });
 
-    // Return placeholder response
-    return `I'm a placeholder assistant. The backend chat API hasn't been implemented yet.\n\nYou asked: "${message}"\n\nOnce the backend is ready, I'll be able to help you query and explore your data using natural language!`;
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to send chat message');
+    }
+
+    const data = await res.json();
+    return data.message;
   },
 };

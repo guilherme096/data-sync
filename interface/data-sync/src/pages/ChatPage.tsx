@@ -87,6 +87,7 @@ export function ChatPage() {
           <div className="w-full max-w-3xl space-y-12">
             {/* Title */}
             <div className="space-y-4 text-center">
+           <img src="/data-sync.png" alt="DataSync logo" className="mx-auto h-18 w-18 mb-5" />
               <h1 className="text-5xl font-bold tracking-tight">
                 Ask the Data
               </h1>

@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="data-sync.png" alt="data-sync logo" width="200"/>
+</div>
+
 # data-sync
 
 ## Overview
