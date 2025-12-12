@@ -7,6 +7,7 @@ import (
 
 	"github.com/guilherme096/data-sync/internal/api"
 	"github.com/guilherme096/data-sync/internal/trino"
+	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
@@ -57,6 +58,11 @@ func main() {
 
 	syncService := sync.NewMetadataSync(metadataDiscovery, metadataStorage)
 
+	chatbotClient, err := chatbot.NewGeminiClient()
+	if err != nil {
+		log.Fatalf("Failed to create Gemini client: %v", err)
+	}
+
 	log.Println("Performing initial metadata sync...")
 	if err := syncService.SyncAll(); err != nil {
 		log.Printf("Warning: initial sync failed: %v", err)
@@ -64,7 +70,7 @@ func main() {
 		log.Println("Initial metadata sync completed successfully")
 	}
 
-	srv := api.NewServer(":"+port, engine, metadataStorage, syncService, metadataDiscovery)
+	srv := api.NewServer(":"+port, engine, metadataStorage, syncService, metadataDiscovery, chatbotClient)
 	if err := srv.Run(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
