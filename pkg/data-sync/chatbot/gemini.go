@@ -37,3 +37,38 @@ func (g *GeminiClient) SendMessage(message string) (string, error) {
 	}
 	return res.Text(), nil
 }
+
+func (g *GeminiClient) SendMessageWithHistory(message string, history []ChatMessage) (string, error) {
+	// Convert history to Gemini format
+	var contents []*genai.Content
+
+	for _, msg := range history {
+		// Map frontend roles to Gemini roles
+		role := msg.Role
+		if role == "assistant" {
+			role = "model"
+		}
+
+		// Create content for this message with the correct role
+		msgContents := genai.Text(msg.Content)
+		if len(msgContents) > 0 {
+			msgContents[0].Role = role
+			contents = append(contents, msgContents...)
+		}
+	}
+
+	// Add current user message
+	userContents := genai.Text(message)
+	if len(userContents) > 0 {
+		userContents[0].Role = "user"
+		contents = append(contents, userContents...)
+	}
+
+	// Generate response with conversation context
+	res, err := g.client.Models.GenerateContent(g.ctx, "gemini-2.5-flash", contents, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate content with history: %w", err)
+	}
+
+	return res.Text(), nil
+}

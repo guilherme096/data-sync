@@ -7,8 +7,14 @@ import (
 	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
 )
 
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type ChatRequest struct {
-	Message string `json:"message"`
+	Message string        `json:"message"`
+	History []ChatMessage `json:"history,omitempty"`
 }
 
 type ChatResponse struct {
@@ -45,8 +51,24 @@ func (r *ChatbotRouter) handleSendMessage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	// Get response from chatbot
-	response, err := r.agent.SendMessage(chatReq.Message)
+	// Convert history to chatbot format
+	var history []chatbot.ChatMessage
+	for _, msg := range chatReq.History {
+		history = append(history, chatbot.ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	// Get response from chatbot with history
+	var response string
+	var err error
+	if len(history) > 0 {
+		response, err = r.agent.SendMessageWithHistory(chatReq.Message, history)
+	} else {
+		response, err = r.agent.SendMessage(chatReq.Message)
+	}
+
 	if err != nil {
 		http.Error(w, "Failed to send message: "+err.Error(), http.StatusInternalServerError)
 		return

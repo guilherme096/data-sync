@@ -175,32 +175,6 @@ export function ChatPage() {
   // Thread view (after first message)
   return (
     <div className="flex h-screen flex-col">
-      {/* Fixed Header with Search */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-3xl px-4 py-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask a follow-up question..."
-              className="h-11 pl-10 pr-12 border-2"
-              disabled={isLoading}
-            />
-            <Button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              size="icon"
-              className="absolute right-1.5 top-1/2 h-8 w-8 -translate-y-1/2"
-            >
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
       {/* Thread Messages */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8 space-y-8">
@@ -253,6 +227,35 @@ export function ChatPage() {
           )}
 
           <div ref={scrollRef} />
+        </div>
+      </div>
+
+      {/* Fixed Input at Bottom */}
+      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto max-w-3xl px-4 py-4">
+          <div className="relative">
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask a follow-up question..."
+              className="h-12 pl-4 pr-12 text-base border-2 rounded-xl"
+              disabled={isLoading}
+            />
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim() || isLoading}
+              size="icon"
+              className="absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

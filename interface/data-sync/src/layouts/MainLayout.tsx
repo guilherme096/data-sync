@@ -6,10 +6,10 @@ export function MainLayout() {
     <div className="flex h-screen w-full bg-background text-foreground">
       {/* Sidebar */}
       <aside className="w-64 border-r bg-muted/10 hidden md:flex flex-col">
-        <div className="p-6 flex items-center gap-2">
+        <Link to="/" className="p-6 flex items-center gap-2 hover:opacity-80 transition-opacity">
            <img src="/data-sync.png" alt="DataSync logo" className="h-8 w-8" />
            <h1 className="text-xl font-bold tracking-tight">DataSync</h1>
-        </div>
+        </Link>
         <nav className="flex-1 px-4 space-y-2">
            <NavLink to="/" icon={<MessageSquare className="w-4 h-4" />} label="Ask the Data" />
            <NavLink to="/query" icon={<Search className="w-4 h-4" />} label="Query" />

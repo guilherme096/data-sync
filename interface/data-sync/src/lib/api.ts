@@ -272,13 +272,19 @@ export const api = {
   },
 
   // Chat API
-  sendChatMessage: async (message: string, _conversationHistory: unknown[]): Promise<string> => {
+  sendChatMessage: async (message: string, conversationHistory: unknown[]): Promise<string> => {
+    // Map conversation history to backend format (role and content only)
+    const history = (conversationHistory as Array<{ role: string; content: string }>).map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
+
     const res = await fetch(`${API_BASE}/chatbot/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, history }),
     });
 
     if (!res.ok) {
