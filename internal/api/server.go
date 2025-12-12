@@ -55,6 +55,9 @@ func (s *Server) Run() error {
 	globalRouter := routers.NewGlobalRouter(s.storage)
 	globalRouter.RegisterRoutes(mux)
 
+	relationRouter := routers.NewRelationRouter(s.storage)
+	relationRouter.RegisterRoutes(mux)
+
 	chatbotRouter := routers.NewChatbotRouter(s.agent)
 	chatbotRouter.RegisterRoutes(mux)
 

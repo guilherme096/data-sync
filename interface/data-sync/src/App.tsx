@@ -2,7 +2,6 @@ import { RouterProvider, createRouter, createRootRoute, createRoute } from '@tan
 import { MainLayout } from './layouts/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 import { QueryPage } from './pages/QueryPage'
-import { InventoryPage } from './pages/InventoryPage'
 import { SchemaStudioPage } from './pages/SchemaStudioPage'
 
 // 1. Create the root route (wraps everything)
@@ -31,14 +30,8 @@ const schemaRoute = createRoute({
   component: SchemaStudioPage,
 })
 
-const inventoryRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/inventory',
-  component: InventoryPage,
-})
-
 // 3. Create the route tree
-const routeTree = rootRoute.addChildren([indexRoute, queryRoute, schemaRoute, inventoryRoute])
+const routeTree = rootRoute.addChildren([indexRoute, queryRoute, schemaRoute])
 
 // 4. Create the router
 const router = createRouter({ routeTree })

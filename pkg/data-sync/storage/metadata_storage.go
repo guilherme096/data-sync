@@ -56,4 +56,10 @@ type MetadataStorage interface {
 	CreateColumnRelationship(relationship *models.ColumnRelationship) error
 	ListColumnRelationships(globalTableName string) ([]*models.ColumnRelationship, error)
 	DeleteColumnRelationship(sourceTable, sourceColumn, targetTable, targetColumn string) error
+
+	// Table relation operations (JOIN/UNION)
+	CreateTableRelation(relation *models.TableRelation) error
+	GetTableRelation(id string) (*models.TableRelation, error)
+	ListTableRelations() ([]*models.TableRelation, error)
+	DeleteTableRelation(id string) error
 }
