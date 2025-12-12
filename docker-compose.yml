@@ -60,6 +60,7 @@ services:
       - TRINO_HOST=trino-coordinator
       - TRINO_PORT=8080
       - TRINO_USER=trino
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - trino-coordinator
     networks:
@@ -67,5 +68,5 @@ services:
 
 networks:
   trino-network:
+    external: true
     name: trino-network
-    driver: bridge

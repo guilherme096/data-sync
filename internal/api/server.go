@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/guilherme096/data-sync/internal/api/routers"
+	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
 	datasync "github.com/guilherme096/data-sync/pkg/data-sync"
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
-	"github.com/guilherme096/data-sync/internal/api/routers"
 )
 
 type Server struct {
@@ -18,15 +19,17 @@ type Server struct {
 	storage   storage.MetadataStorage
 	sync      sync.MetadataSync
 	discovery discovery.MetadataDiscovery
+	agent     chatbot.AgentActions
 }
 
-func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync, discovery discovery.MetadataDiscovery) *Server {
+func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync, discovery discovery.MetadataDiscovery, agent chatbot.AgentActions) *Server {
 	return &Server{
 		addr:      addr,
 		engine:    engine,
 		storage:   storage,
 		sync:      sync,
 		discovery: discovery,
+		agent:     agent,
 	}
 }
 
@@ -51,6 +54,9 @@ func (s *Server) Run() error {
 
 	globalRouter := routers.NewGlobalRouter(s.storage)
 	globalRouter.RegisterRoutes(mux)
+
+	chatbotRouter := routers.NewChatbotRouter(s.agent)
+	chatbotRouter.RegisterRoutes(mux)
 
 	server := &http.Server{
 		Addr:         s.addr,
