@@ -39,6 +39,11 @@ func (r *GlobalRouter) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /global/tables/{name}/columns/{column}/mappings", r.handleCreateColumnMapping)
 	mux.HandleFunc("GET /global/tables/{name}/columns/{column}/mappings", r.handleListColumnMappings)
 	mux.HandleFunc("DELETE /global/tables/{name}/columns/{column}/mappings", r.handleDeleteColumnMapping)
+
+	// Column relationship routes
+	mux.HandleFunc("POST /global/tables/{name}/relationships", r.handleCreateColumnRelationship)
+	mux.HandleFunc("GET /global/tables/{name}/relationships", r.handleListColumnRelationships)
+	mux.HandleFunc("DELETE /global/tables/{name}/relationships", r.handleDeleteColumnRelationship)
 }
 
 // ============================================================================
@@ -278,6 +283,71 @@ func (r *GlobalRouter) handleDeleteColumnMapping(w http.ResponseWriter, req *htt
 	if err := r.storage.DeleteColumnMapping(
 		tableName, columnName,
 		mapping.CatalogName, mapping.SchemaName, mapping.TableName, mapping.ColumnName,
+	); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ============================================================================
+// Column Relationship Handlers
+// ============================================================================
+
+func (r *GlobalRouter) handleCreateColumnRelationship(w http.ResponseWriter, req *http.Request) {
+	var relationship models.ColumnRelationship
+	if err := json.NewDecoder(req.Body).Decode(&relationship); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate that path parameter matches body
+	tableName := req.PathValue("name")
+	if relationship.SourceGlobalTableName != tableName {
+		http.Error(w, "source table in body must match URL parameter", http.StatusBadRequest)
+		return
+	}
+
+	if err := r.storage.CreateColumnRelationship(&relationship); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(relationship)
+}
+
+func (r *GlobalRouter) handleListColumnRelationships(w http.ResponseWriter, req *http.Request) {
+	tableName := req.PathValue("name")
+	if tableName == "" {
+		http.Error(w, "table name is required", http.StatusBadRequest)
+		return
+	}
+
+	relationships, err := r.storage.ListColumnRelationships(tableName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(relationships)
+}
+
+func (r *GlobalRouter) handleDeleteColumnRelationship(w http.ResponseWriter, req *http.Request) {
+	var relationship models.ColumnRelationship
+	if err := json.NewDecoder(req.Body).Decode(&relationship); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := r.storage.DeleteColumnRelationship(
+		relationship.SourceGlobalTableName,
+		relationship.SourceGlobalColumnName,
+		relationship.TargetGlobalTableName,
+		relationship.TargetGlobalColumnName,
 	); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -51,4 +51,9 @@ type MetadataStorage interface {
 	CreateColumnMapping(mapping *models.ColumnMapping) error
 	ListColumnMappings(globalTableName, globalColumnName string) ([]*models.ColumnMapping, error)
 	DeleteColumnMapping(globalTableName, globalColumnName, catalog, schema, table, column string) error
+
+	// Column relationship operations
+	CreateColumnRelationship(relationship *models.ColumnRelationship) error
+	ListColumnRelationships(globalTableName string) ([]*models.ColumnRelationship, error)
+	DeleteColumnRelationship(sourceTable, sourceColumn, targetTable, targetColumn string) error
 }

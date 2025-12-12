@@ -3,12 +3,98 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { api, type GlobalTable, type GlobalColumn, type TableMapping, type ColumnMapping, type Catalog, type Schema, type Table as LocalTable, type Column as LocalColumn } from '@/lib/api'
-import { Plus, Table, Columns3, Trash2, Link, X } from 'lucide-react'
-import { Separator } from '@/components/ui/separator'
+import { api, type GlobalTable, type GlobalColumn, type TableMapping, type ColumnRelationship, type Catalog, type Schema, type Table as LocalTable, type Column as LocalColumn } from '@/lib/api'
+import { Plus, Table, Columns3, Trash2, Link, X, MapPin } from 'lucide-react'
 
 const queryClient = new QueryClient();
+
+function ColumnMappingItem({
+  globalTableName,
+  column,
+  onMapClick,
+}: {
+  globalTableName: string;
+  column: GlobalColumn;
+  onMapClick: () => void;
+}) {
+  const queryClientInstance = useQueryClient()
+
+  const { data: mappings } = useQuery({
+    queryKey: ['columnMappings', globalTableName, column.Name],
+    queryFn: () => api.listColumnMappings(globalTableName, column.Name),
+    enabled: !!globalTableName && !!column.Name,
+  })
+
+  const deleteMappingMutation = useMutation({
+    mutationFn: ({ mapping }: { mapping: { CatalogName: string; SchemaName: string; TableName: string; ColumnName: string } }) =>
+      api.deleteColumnMapping(globalTableName, column.Name, mapping),
+    onSuccess: () => {
+      queryClientInstance.invalidateQueries({ queryKey: ['columnMappings', globalTableName, column.Name] })
+    },
+  })
+
+  const hasMappings = mappings && mappings.length > 0
+
+  return (
+    <div className="border rounded-lg p-3">
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex items-baseline gap-2">
+          <span className="font-medium text-sm">{column.Name}</span>
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{column.DataType}</code>
+          {hasMappings && (
+            <span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded">
+              {mappings.length} mapped
+            </span>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 text-xs"
+          onClick={onMapClick}
+        >
+          <Plus className="w-3 h-3 mr-1" />
+          Map
+        </Button>
+      </div>
+
+      {hasMappings && (
+        <div className="mt-2 space-y-1">
+          {mappings.map((mapping, idx) => (
+            <div
+              key={idx}
+              className="flex items-center justify-between text-xs bg-muted/30 rounded px-2 py-1.5"
+            >
+              <span className="font-mono">
+                {mapping.CatalogName}.{mapping.SchemaName}.{mapping.TableName}.{mapping.ColumnName}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-4 w-4 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (confirm(`Remove mapping to ${mapping.CatalogName}.${mapping.SchemaName}.${mapping.TableName}.${mapping.ColumnName}?`)) {
+                    deleteMappingMutation.mutate({ mapping })
+                  }
+                }}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hasMappings && (
+        <div className="text-xs text-muted-foreground italic">
+          No physical mappings yet
+        </div>
+      )}
+    </div>
+  )
+}
 
 function SchemaStudioPageContent() {
   const queryClientInstance = useQueryClient()
@@ -41,6 +127,14 @@ function SchemaStudioPageContent() {
   const [colMappingTable, setColMappingTable] = useState('')
   const [colMappingColumn, setColMappingColumn] = useState('')
 
+  // Relationship state
+  const [isAddingRelationship, setIsAddingRelationship] = useState(false)
+  const [relSourceColumn, setRelSourceColumn] = useState('')
+  const [relTargetTable, setRelTargetTable] = useState('')
+  const [relTargetColumn, setRelTargetColumn] = useState('')
+  const [relName, setRelName] = useState('')
+  const [relDescription, setRelDescription] = useState('')
+
   // Queries - Global data
   const { data: globalTables, isLoading } = useQuery<GlobalTable[], Error>({
     queryKey: ['globalTables'],
@@ -57,6 +151,19 @@ function SchemaStudioPageContent() {
     queryKey: ['tableMappings', selectedTable],
     queryFn: () => api.listTableMappings(selectedTable!),
     enabled: !!selectedTable,
+  })
+
+  const { data: columnRelationships } = useQuery<ColumnRelationship[], Error>({
+    queryKey: ['columnRelationships', selectedTable],
+    queryFn: () => api.listColumnRelationships(selectedTable!),
+    enabled: !!selectedTable,
+  })
+
+  // Query for target table columns
+  const { data: targetGlobalColumns } = useQuery<GlobalColumn[], Error>({
+    queryKey: ['globalColumns', relTargetTable],
+    queryFn: () => api.listGlobalColumns(relTargetTable),
+    enabled: !!relTargetTable,
   })
 
   // Queries - Local data for selection
@@ -132,13 +239,53 @@ function SchemaStudioPageContent() {
   const createColumnMappingMutation = useMutation({
     mutationFn: ({ tableName, columnName, mapping }: { tableName: string; columnName: string; mapping: { CatalogName: string; SchemaName: string; TableName: string; ColumnName: string } }) =>
       api.createColumnMapping(tableName, columnName, mapping),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      queryClientInstance.invalidateQueries({ queryKey: ['columnMappings', variables.tableName, variables.columnName] })
       setIsAddingColumnMapping(false)
       setSelectedGlobalColumn(null)
       setColMappingCatalog('')
       setColMappingSchema('')
       setColMappingTable('')
       setColMappingColumn('')
+    },
+  })
+
+  // Mutations - Relationships
+  const createRelationshipMutation = useMutation({
+    mutationFn: ({ tableName, relationship }: {
+      tableName: string;
+      relationship: {
+        SourceGlobalTableName: string;
+        SourceGlobalColumnName: string;
+        TargetGlobalTableName: string;
+        TargetGlobalColumnName: string;
+        RelationshipName?: string;
+        Description?: string;
+      };
+    }) => api.createColumnRelationship(tableName, relationship),
+    onSuccess: () => {
+      queryClientInstance.invalidateQueries({ queryKey: ['columnRelationships', selectedTable] })
+      setIsAddingRelationship(false)
+      setRelSourceColumn('')
+      setRelTargetTable('')
+      setRelTargetColumn('')
+      setRelName('')
+      setRelDescription('')
+    },
+  })
+
+  const deleteRelationshipMutation = useMutation({
+    mutationFn: ({ tableName, relationship }: {
+      tableName: string;
+      relationship: {
+        SourceGlobalTableName: string;
+        SourceGlobalColumnName: string;
+        TargetGlobalTableName: string;
+        TargetGlobalColumnName: string;
+      };
+    }) => api.deleteColumnRelationship(tableName, relationship),
+    onSuccess: () => {
+      queryClientInstance.invalidateQueries({ queryKey: ['columnRelationships', selectedTable] })
     },
   })
 
@@ -177,6 +324,22 @@ function SchemaStudioPageContent() {
     }
   }
 
+  const handleCreateRelationship = () => {
+    if (selectedTable && relSourceColumn && relTargetTable && relTargetColumn) {
+      createRelationshipMutation.mutate({
+        tableName: selectedTable,
+        relationship: {
+          SourceGlobalTableName: selectedTable,
+          SourceGlobalColumnName: relSourceColumn,
+          TargetGlobalTableName: relTargetTable,
+          TargetGlobalColumnName: relTargetColumn,
+          RelationshipName: relName || undefined,
+          Description: relDescription || undefined,
+        },
+      })
+    }
+  }
+
   const handleCreateColumnMapping = () => {
     if (selectedTable && selectedGlobalColumn && colMappingCatalog && colMappingSchema && colMappingTable && colMappingColumn) {
       createColumnMappingMutation.mutate({
@@ -198,12 +361,23 @@ function SchemaStudioPageContent() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Schema Studio</h1>
         <p className="text-muted-foreground mt-1">
-          Create global tables and map them to your data sources
+          Define your logical data model and map it to physical sources
         </p>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 grid grid-cols-2 gap-6 overflow-hidden">
+      {/* Tabs */}
+      <Tabs defaultValue="schema" className="flex-1 flex flex-col overflow-hidden">
+        <TabsList className="w-fit">
+          <TabsTrigger value="schema">Schema</TabsTrigger>
+          <TabsTrigger value="mappings">
+            <MapPin className="w-4 h-4 mr-2" />
+            Mappings
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Schema Tab - Logical Layer */}
+        <TabsContent value="schema" className="flex-1 overflow-hidden mt-4">
+          <div className="h-full grid grid-cols-2 gap-6 overflow-hidden">
         {/* Left Panel - Global Tables List */}
         <div className="flex flex-col gap-4 overflow-hidden">
           <Card className="flex-shrink-0">
@@ -332,6 +506,38 @@ function SchemaStudioPageContent() {
             </Card>
           ) : (
             <>
+              {/* Table Info Card */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="flex items-center gap-2">
+                        <Table className="w-5 h-5" />
+                        {selectedTable}
+                      </CardTitle>
+                      {globalTables?.find(t => t.Name === selectedTable)?.Description && (
+                        <CardDescription className="mt-1">
+                          {globalTables.find(t => t.Name === selectedTable)?.Description}
+                        </CardDescription>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        if (confirm(`Delete table "${selectedTable}"?`)) {
+                          deleteTableMutation.mutate(selectedTable)
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete Table
+                    </Button>
+                  </div>
+                </CardHeader>
+              </Card>
+
               {/* Columns Card */}
               <Card>
                 <CardHeader>
@@ -394,24 +600,18 @@ function SchemaStudioPageContent() {
                   ) : (
                     <div className="space-y-2">
                       {globalColumns.map((column) => (
-                        <div key={column.Name} className="p-2 border rounded flex items-center justify-between">
-                          <div className="flex items-baseline gap-2">
-                            <span className="font-medium text-sm">{column.Name}</span>
-                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{column.DataType}</code>
+                        <div key={column.Name} className="p-2 border rounded flex items-start justify-between">
+                          <div>
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-medium text-sm">{column.Name}</span>
+                              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{column.DataType}</code>
+                            </div>
+                            {column.Description && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {column.Description}
+                              </div>
+                            )}
                           </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-xs"
-                            onClick={() => {
-                              setSelectedGlobalColumn(column.Name)
-                              setIsAddingColumnMapping(true)
-                              setIsAddingTableMapping(false)
-                            }}
-                          >
-                            <Link className="w-3 h-3 mr-1" />
-                            Map
-                          </Button>
                         </div>
                       ))}
                     </div>
@@ -419,6 +619,242 @@ function SchemaStudioPageContent() {
                 </CardContent>
               </Card>
 
+              {/* Column Relationships Card */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Link className="w-4 h-4" />
+                      Column Relationships
+                    </CardTitle>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsAddingRelationship(!isAddingRelationship)
+                      }}
+                    >
+                      <Plus className="w-3 h-3 mr-2" />
+                      Add Relationship
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isAddingRelationship && (
+                    <div className="mb-4 p-3 border rounded-lg space-y-2 bg-muted/20">
+                      <Select value={relSourceColumn} onValueChange={setRelSourceColumn}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select source column" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {globalColumns?.map((col) => (
+                            <SelectItem key={col.Name} value={col.Name}>
+                              {col.Name} ({col.DataType})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={relTargetTable} onValueChange={setRelTargetTable}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select target table" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {globalTables
+                            ?.filter((t) => t.Name !== selectedTable)
+                            .map((table) => (
+                              <SelectItem key={table.Name} value={table.Name}>
+                                {table.Name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={relTargetColumn}
+                        onValueChange={setRelTargetColumn}
+                        disabled={!relTargetTable}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select target column" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {targetGlobalColumns?.map((col) => (
+                            <SelectItem key={col.Name} value={col.Name}>
+                              {col.Name} ({col.DataType})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        placeholder="Relationship name (optional)"
+                        value={relName}
+                        onChange={(e) => setRelName(e.target.value)}
+                      />
+
+                      <Input
+                        placeholder="Description (optional)"
+                        value={relDescription}
+                        onChange={(e) => setRelDescription(e.target.value)}
+                      />
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={handleCreateRelationship}
+                          disabled={!relSourceColumn || !relTargetTable || !relTargetColumn}
+                        >
+                          Create
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsAddingRelationship(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!columnRelationships || columnRelationships.length === 0 ? (
+                    <div className="text-sm text-muted-foreground py-4">
+                      No relationships yet
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {columnRelationships.map((rel, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 border rounded flex items-start justify-between"
+                        >
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">
+                              {rel.SourceGlobalTableName === selectedTable ? (
+                                <span>
+                                  {rel.SourceGlobalColumnName} → {rel.TargetGlobalTableName}.{rel.TargetGlobalColumnName}
+                                </span>
+                              ) : (
+                                <span>
+                                  ← {rel.SourceGlobalTableName}.{rel.SourceGlobalColumnName}
+                                </span>
+                              )}
+                            </div>
+                            {rel.RelationshipName && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {rel.RelationshipName}
+                              </div>
+                            )}
+                            {rel.Description && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {rel.Description}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              if (confirm('Delete this relationship?')) {
+                                deleteRelationshipMutation.mutate({
+                                  tableName: selectedTable!,
+                                  relationship: {
+                                    SourceGlobalTableName: rel.SourceGlobalTableName,
+                                    SourceGlobalColumnName: rel.SourceGlobalColumnName,
+                                    TargetGlobalTableName: rel.TargetGlobalTableName,
+                                    TargetGlobalColumnName: rel.TargetGlobalColumnName,
+                                  },
+                                })
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      </div>
+    </TabsContent>
+
+    {/* Mappings Tab - Physical Layer */}
+    <TabsContent value="mappings" className="flex-1 overflow-hidden mt-4">
+      <div className="h-full grid grid-cols-2 gap-6 overflow-hidden">
+        {/* Left Panel - Global Tables List (Reused) */}
+        <div className="flex flex-col gap-4 overflow-hidden">
+          <Card className="flex-shrink-0">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Table className="w-5 h-5" />
+                    Global Tables
+                  </CardTitle>
+                  <CardDescription>
+                    Map global tables to physical sources
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="max-h-[600px] overflow-y-auto">
+              {isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading...</div>
+              ) : !globalTables || globalTables.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Table className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                  <p className="text-sm">No global tables yet</p>
+                  <p className="text-xs mt-1">Create tables in the Schema tab first</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {globalTables.map((table) => (
+                    <div
+                      key={table.Name}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        selectedTable === table.Name
+                          ? 'bg-primary/10 border-primary'
+                          : 'hover:bg-muted/50'
+                      }`}
+                      onClick={() => {
+                        setSelectedTable(table.Name)
+                        setIsAddingTableMapping(false)
+                        setIsAddingColumnMapping(false)
+                      }}
+                    >
+                      <div className="font-medium">{table.Name}</div>
+                      {table.Description && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {table.Description}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Panel - Physical Mappings */}
+        <div className="flex flex-col gap-4 overflow-y-auto">
+          {!selectedTable ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-12 text-muted-foreground">
+                  <MapPin className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                  <p className="text-sm">Select a table to configure mappings</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
               {/* Table Mappings Card */}
               <Card>
                 <CardHeader>
@@ -490,7 +926,39 @@ function SchemaStudioPageContent() {
                 </CardContent>
               </Card>
 
-              {/* Column Mapping Card */}
+              {/* Column Mappings Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Column Mappings</CardTitle>
+                  <CardDescription>
+                    Connect global columns to physical database columns. Each global column can map to multiple physical sources.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!globalColumns || globalColumns.length === 0 ? (
+                    <div className="text-sm text-muted-foreground py-4">
+                      No columns to map. Add columns in the Schema tab first.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {globalColumns.map((column) => (
+                        <ColumnMappingItem
+                          key={column.Name}
+                          globalTableName={selectedTable!}
+                          column={column}
+                          onMapClick={() => {
+                            setSelectedGlobalColumn(column.Name)
+                            setIsAddingColumnMapping(true)
+                            setIsAddingTableMapping(false)
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Column Mapping Form */}
               {isAddingColumnMapping && selectedGlobalColumn && (
                 <Card>
                   <CardHeader>
@@ -563,6 +1031,8 @@ function SchemaStudioPageContent() {
           )}
         </div>
       </div>
+    </TabsContent>
+  </Tabs>
     </div>
   )
 }

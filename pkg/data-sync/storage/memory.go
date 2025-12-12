@@ -21,6 +21,7 @@ type MemoryMetadataStorage struct {
 	globalColumns  map[string]map[string]*models.GlobalColumn        // globalTable -> columnName -> column
 	tableMappings  map[string][]*models.TableMapping                 // globalTable -> mappings
 	columnMappings map[string]map[string][]*models.ColumnMapping     // globalTable -> columnName -> mappings
+	columnRelationships map[string][]*models.ColumnRelationship      // globalTable -> relationships
 }
 
 func NewMemoryMetadataStorage() *MemoryMetadataStorage {
@@ -35,6 +36,7 @@ func NewMemoryMetadataStorage() *MemoryMetadataStorage {
 		globalColumns:  make(map[string]map[string]*models.GlobalColumn),
 		tableMappings:  make(map[string][]*models.TableMapping),
 		columnMappings: make(map[string]map[string][]*models.ColumnMapping),
+		columnRelationships: make(map[string][]*models.ColumnRelationship),
 	}
 }
 
@@ -564,6 +566,19 @@ func (m *MemoryMetadataStorage) DeleteGlobalTable(name string) error {
 	delete(m.tableMappings, name)
 	delete(m.columnMappings, name)
 
+	// Delete relationships where this table is source or target
+	delete(m.columnRelationships, name)
+	// Also remove relationships from other tables that reference this table
+	for tableName, relationships := range m.columnRelationships {
+		filtered := []*models.ColumnRelationship{}
+		for _, rel := range relationships {
+			if rel.SourceGlobalTableName != name && rel.TargetGlobalTableName != name {
+				filtered = append(filtered, rel)
+			}
+		}
+		m.columnRelationships[tableName] = filtered
+	}
+
 	return nil
 }
 
@@ -632,6 +647,19 @@ func (m *MemoryMetadataStorage) DeleteGlobalColumn(globalTableName, columnName s
 	delete(columns, columnName)
 	if tableColumnMappings, exists := m.columnMappings[globalTableName]; exists {
 		delete(tableColumnMappings, columnName)
+	}
+
+	// Delete relationships involving this column
+	for tableName, relationships := range m.columnRelationships {
+		filtered := []*models.ColumnRelationship{}
+		for _, rel := range relationships {
+			// Keep relationships that don't involve this specific column
+			if !(rel.SourceGlobalTableName == globalTableName && rel.SourceGlobalColumnName == columnName) &&
+			   !(rel.TargetGlobalTableName == globalTableName && rel.TargetGlobalColumnName == columnName) {
+				filtered = append(filtered, rel)
+			}
+		}
+		m.columnRelationships[tableName] = filtered
 	}
 
 	return nil
@@ -786,4 +814,135 @@ func (m *MemoryMetadataStorage) DeleteColumnMapping(globalTableName, globalColum
 	}
 
 	return fmt.Errorf("column mapping not found")
+}
+
+// ============================================================================
+// Column Relationship Operations
+// ============================================================================
+
+func (m *MemoryMetadataStorage) CreateColumnRelationship(relationship *models.ColumnRelationship) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Validate all fields are non-empty
+	if relationship.SourceGlobalTableName == "" || relationship.SourceGlobalColumnName == "" ||
+		relationship.TargetGlobalTableName == "" || relationship.TargetGlobalColumnName == "" {
+		return fmt.Errorf("all relationship fields (source table, source column, target table, target column) must be non-empty")
+	}
+
+	// Verify source table exists
+	if _, exists := m.globalTables[relationship.SourceGlobalTableName]; !exists {
+		return fmt.Errorf("source global table '%s' not found", relationship.SourceGlobalTableName)
+	}
+
+	// Verify source column exists
+	sourceColumns, exists := m.globalColumns[relationship.SourceGlobalTableName]
+	if !exists || sourceColumns[relationship.SourceGlobalColumnName] == nil {
+		return fmt.Errorf("source global column '%s.%s' not found",
+			relationship.SourceGlobalTableName, relationship.SourceGlobalColumnName)
+	}
+
+	// Verify target table exists
+	if _, exists := m.globalTables[relationship.TargetGlobalTableName]; !exists {
+		return fmt.Errorf("target global table '%s' not found", relationship.TargetGlobalTableName)
+	}
+
+	// Verify target column exists
+	targetColumns, exists := m.globalColumns[relationship.TargetGlobalTableName]
+	if !exists || targetColumns[relationship.TargetGlobalColumnName] == nil {
+		return fmt.Errorf("target global column '%s.%s' not found",
+			relationship.TargetGlobalTableName, relationship.TargetGlobalColumnName)
+	}
+
+	// Check for duplicate relationship
+	existingRelationships := m.columnRelationships[relationship.SourceGlobalTableName]
+	for _, existing := range existingRelationships {
+		if existing.SourceGlobalTableName == relationship.SourceGlobalTableName &&
+			existing.SourceGlobalColumnName == relationship.SourceGlobalColumnName &&
+			existing.TargetGlobalTableName == relationship.TargetGlobalTableName &&
+			existing.TargetGlobalColumnName == relationship.TargetGlobalColumnName {
+			return fmt.Errorf("relationship already exists between %s.%s and %s.%s",
+				relationship.SourceGlobalTableName, relationship.SourceGlobalColumnName,
+				relationship.TargetGlobalTableName, relationship.TargetGlobalColumnName)
+		}
+	}
+
+	// Store relationship bidirectionally for efficient queries
+	m.columnRelationships[relationship.SourceGlobalTableName] = append(
+		m.columnRelationships[relationship.SourceGlobalTableName], relationship)
+
+	// If source and target tables are different, also store under target table
+	if relationship.SourceGlobalTableName != relationship.TargetGlobalTableName {
+		m.columnRelationships[relationship.TargetGlobalTableName] = append(
+			m.columnRelationships[relationship.TargetGlobalTableName], relationship)
+	}
+
+	return nil
+}
+
+func (m *MemoryMetadataStorage) ListColumnRelationships(globalTableName string) ([]*models.ColumnRelationship, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	relationships, exists := m.columnRelationships[globalTableName]
+	if !exists {
+		return []*models.ColumnRelationship{}, nil
+	}
+
+	// Use a map to deduplicate in case of self-referential relationships
+	seen := make(map[string]bool)
+	result := []*models.ColumnRelationship{}
+
+	for _, rel := range relationships {
+		// Create a unique key for deduplication
+		key := fmt.Sprintf("%s.%s->%s.%s",
+			rel.SourceGlobalTableName, rel.SourceGlobalColumnName,
+			rel.TargetGlobalTableName, rel.TargetGlobalColumnName)
+
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, rel)
+		}
+	}
+
+	return result, nil
+}
+
+func (m *MemoryMetadataStorage) DeleteColumnRelationship(sourceTable, sourceColumn, targetTable, targetColumn string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Remove from source table's relationships
+	sourceRelationships, exists := m.columnRelationships[sourceTable]
+	if exists {
+		filtered := []*models.ColumnRelationship{}
+		for _, rel := range sourceRelationships {
+			if !(rel.SourceGlobalTableName == sourceTable &&
+				rel.SourceGlobalColumnName == sourceColumn &&
+				rel.TargetGlobalTableName == targetTable &&
+				rel.TargetGlobalColumnName == targetColumn) {
+				filtered = append(filtered, rel)
+			}
+		}
+		m.columnRelationships[sourceTable] = filtered
+	}
+
+	// Remove from target table's relationships (if different from source)
+	if sourceTable != targetTable {
+		targetRelationships, exists := m.columnRelationships[targetTable]
+		if exists {
+			filtered := []*models.ColumnRelationship{}
+			for _, rel := range targetRelationships {
+				if !(rel.SourceGlobalTableName == sourceTable &&
+					rel.SourceGlobalColumnName == sourceColumn &&
+					rel.TargetGlobalTableName == targetTable &&
+					rel.TargetGlobalColumnName == targetColumn) {
+					filtered = append(filtered, rel)
+				}
+			}
+			m.columnRelationships[targetTable] = filtered
+		}
+	}
+
+	return nil
 }
