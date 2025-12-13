@@ -199,15 +199,16 @@ export function QueryPage() {
                </div>
             </div>
 
-            <Card className="flex-1 flex flex-col overflow-hidden shadow-sm rounded-t-none mt-[-1rem] border-t-0">
-               <div className="flex-1 overflow-auto bg-card">
+            {/* SQL Editor - Compact */}
+            <Card className="shadow-sm rounded-t-none mt-[-1rem] border-t-0">
+               <div className="bg-card">
                   <CodeMirror
                     value={sqlCode}
-                    height="100%"
+                    height="120px"
                     extensions={[sqlLang()]}
                     onChange={(val) => setSqlCode(val)}
                     theme={isDark ? githubDark : githubLight}
-                    className="h-full text-[13px]"
+                    className="text-[13px]"
                     basicSetup={{
                         lineNumbers: true,
                         highlightActiveLineGutter: true,
@@ -220,11 +221,11 @@ export function QueryPage() {
                     }}
                   />
                </div>
-               
-               <Separator />
+            </Card>
 
-               {/* Results Area */}
-               <div className="h-1/3 bg-muted/10 p-0 overflow-hidden flex flex-col">
+            {/* Results Area */}
+            <Card className="flex-1 overflow-hidden shadow-sm">
+               <div className="h-full bg-muted/10 p-0 overflow-hidden flex flex-col">
                   <div className="px-4 py-2 bg-muted/30 border-b flex justify-between items-center">
                       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Results</span>
                       <div className="flex items-center gap-3">
