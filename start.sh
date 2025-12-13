@@ -117,11 +117,11 @@ print_success "All data sources are running and initialized"
 # Give databases a moment to fully initialize
 sleep 3
 
-# Step 3: Start Trino cluster and Go backend
+# Step 3: Start Trino cluster first
 print_info "========================================="
-print_info "Step 3: Starting Trino and Go backend..."
+print_info "Step 3: Starting Trino cluster..."
 print_info "========================================="
-docker-compose up -d --build
+docker-compose up -d trino-coordinator trino-worker-1 trino-worker-2 trino-worker-3
 
 # Wait for Trino to be ready
 wait_for_service "Trino" "localhost" "8080" 90
@@ -135,13 +135,19 @@ else
     print_warning "Trino may not be fully ready yet, but continuing..."
 fi
 
+# Step 4: Start Go backend after Trino is ready
+print_info "========================================="
+print_info "Step 4: Starting Go backend..."
+print_info "========================================="
+docker-compose up -d --build data-sync
+
 # Wait for Go backend to be ready
 wait_for_service "Go Backend" "localhost" "8081" 60
 print_success "Go backend is running"
 
-# Step 4: Start Frontend
+# Step 5: Start Frontend
 print_info "========================================="
-print_info "Step 4: Starting Frontend..."
+print_info "Step 5: Starting Frontend..."
 print_info "========================================="
 
 cd interface/data-sync

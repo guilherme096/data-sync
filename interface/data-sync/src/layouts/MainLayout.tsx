@@ -1,5 +1,6 @@
 import { Link, Outlet } from '@tanstack/react-router'
 import { Database, MessageSquare, Search, Workflow } from 'lucide-react'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export function MainLayout() {
   return (
@@ -15,8 +16,13 @@ export function MainLayout() {
            <NavLink to="/query" icon={<Search className="w-4 h-4" />} label="Query" />
            <NavLink to="/schema" icon={<Workflow className="w-4 h-4" />} label="Schema Studio" />
         </nav>
-        <div className="p-4 border-t text-xs text-muted-foreground text-center">
-          v0.1.0-alpha
+        <div className="p-4 border-t">
+          <div className="flex items-center justify-center mb-3">
+            <ThemeToggle />
+          </div>
+          <div className="text-xs text-muted-foreground text-center">
+            v0.1.0-alpha
+          </div>
         </div>
       </aside>
 

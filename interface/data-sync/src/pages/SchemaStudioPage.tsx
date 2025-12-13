@@ -725,10 +725,21 @@ function SchemaStudioPageContent() {
 
   const syncMutation = useMutation({
     mutationFn: api.syncMetadata,
-    onSuccess: () => {
-      queryClientInstance.invalidateQueries({ queryKey: ['catalogs'] })
-      if (selectedCatalogName) {
-        queryClientInstance.invalidateQueries({ queryKey: ['schemas', selectedCatalogName] })
+    onSuccess: async () => {
+      // Invalidate and refetch catalogs
+      await queryClientInstance.invalidateQueries({ queryKey: ['catalogs'] })
+      await queryClientInstance.refetchQueries({ queryKey: ['catalogs'] })
+
+      // Invalidate and refetch schemas if a catalog is selected
+      if (selectedCatalogName && selectedCatalogName !== '__ALL__') {
+        await queryClientInstance.invalidateQueries({ queryKey: ['schemas', selectedCatalogName] })
+        await queryClientInstance.refetchQueries({ queryKey: ['schemas', selectedCatalogName] })
+      }
+
+      // Invalidate and refetch tables if both catalog and schema are selected
+      if (selectedCatalogName && selectedCatalogName !== '__ALL__' && selectedSchemaName && selectedSchemaName !== '__ALL__') {
+        await queryClientInstance.invalidateQueries({ queryKey: ['tables', selectedCatalogName, selectedSchemaName] })
+        await queryClientInstance.refetchQueries({ queryKey: ['tables', selectedCatalogName, selectedSchemaName] })
       }
     },
   })

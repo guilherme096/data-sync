@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/data-sync.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      try {
+        const theme = localStorage.getItem('data-sync-theme') || 'system'
+        const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        const appliedTheme = theme === 'system' ? systemTheme : theme
+        document.documentElement.classList.add(appliedTheme)
+      } catch {}
+    </script>
     <title>data-sync</title>
   </head>
   <body>

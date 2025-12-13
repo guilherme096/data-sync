@@ -9,28 +9,51 @@ import (
 	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
 	datasync "github.com/guilherme096/data-sync/pkg/data-sync"
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
+	"github.com/guilherme096/data-sync/pkg/data-sync/query"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
 )
 
 type Server struct {
-	addr      string
-	engine    datasync.QueryEngine
-	storage   storage.MetadataStorage
-	sync      sync.MetadataSync
-	discovery discovery.MetadataDiscovery
-	agent     chatbot.AgentActions
+	addr       string
+	engine     datasync.QueryEngine
+	storage    storage.MetadataStorage
+	sync       sync.MetadataSync
+	discovery  discovery.MetadataDiscovery
+	agent      chatbot.AgentActions
+	translator query.QueryTranslator
 }
 
-func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync, discovery discovery.MetadataDiscovery, agent chatbot.AgentActions) *Server {
+func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync, discovery discovery.MetadataDiscovery, agent chatbot.AgentActions, translator query.QueryTranslator) *Server {
 	return &Server{
-		addr:      addr,
-		engine:    engine,
-		storage:   storage,
-		sync:      sync,
-		discovery: discovery,
-		agent:     agent,
+		addr:       addr,
+		engine:     engine,
+		storage:    storage,
+		sync:       sync,
+		discovery:  discovery,
+		agent:      agent,
+		translator: translator,
 	}
+}
+
+// corsMiddleware adds CORS headers to allow cross-origin requests
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+
+		// Handle preflight OPTIONS request
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Call the next handler
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Run() error {
@@ -55,15 +78,21 @@ func (s *Server) Run() error {
 	globalRouter := routers.NewGlobalRouter(s.storage)
 	globalRouter.RegisterRoutes(mux)
 
-	relationRouter := routers.NewRelationRouter(s.storage)
+	relationRouter := routers.NewRelationRouter(s.storage, s.discovery)
 	relationRouter.RegisterRoutes(mux)
 
 	chatbotRouter := routers.NewChatbotRouter(s.agent)
 	chatbotRouter.RegisterRoutes(mux)
 
+	globalQueryRouter := routers.NewGlobalQueryRouter(s.translator)
+	globalQueryRouter.RegisterRoutes(mux)
+
+	// Wrap with CORS middleware
+	handler := corsMiddleware(mux)
+
 	server := &http.Server{
 		Addr:         s.addr,
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
