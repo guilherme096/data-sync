@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel, type TableRelation, type TableSource } from '@/lib/api'
-import { Plus, Database, GitMerge, Search, Zap, X } from 'lucide-react'
+import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel, type TableRelation, type TableSource, type GlobalTable, type GlobalColumn } from '@/lib/api'
+import { Plus, Database, GitMerge, Search, Zap, X, Globe } from 'lucide-react'
 import { useMemo } from 'react'
 
 const queryClient = new QueryClient();
@@ -103,6 +103,47 @@ function CatalogSection({ catalogName, tableSearch }: { catalogName: string; tab
         />
       ))}
     </>
+  );
+}
+
+// ============================================
+// GLOBAL TABLES TAB COMPONENTS
+// ============================================
+
+function GlobalTableItem({ tableName }: { tableName: string }) {
+  const { data: columns, isLoading } = useQuery<GlobalColumn[], Error>({
+    queryKey: ['globalColumns', tableName],
+    queryFn: () => api.listGlobalColumns(tableName),
+  });
+
+  return (
+    <div className="border-b">
+      <div className="py-2 px-3 font-medium flex items-center gap-2">
+        <Globe className="w-4 h-4 text-primary" />
+        {tableName}
+      </div>
+      <div className="pb-2 px-3 pl-9 bg-muted/10">
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground py-1">Loading...</div>
+        ) : columns && columns.length > 0 ? (
+          <div className="space-y-0.5">
+            {columns.map((column) => (
+              <div key={column.Name} className="flex items-baseline gap-3 text-sm py-0.5">
+                <span className="min-w-[180px]">{column.Name}</span>
+                <code className="text-xs bg-background px-1.5 py-0.5 rounded font-mono text-muted-foreground">
+                  {column.DataType}
+                </code>
+                {column.Description && (
+                  <span className="text-xs text-muted-foreground italic">{column.Description}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground py-1">No columns</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -705,6 +746,12 @@ function SchemaStudioPageContent() {
     queryFn: api.listTableRelations,
   })
 
+  // Load global tables
+  const { data: globalTables = [], isLoading: isLoadingGlobalTables } = useQuery<GlobalTable[], Error>({
+    queryKey: ['globalTables'],
+    queryFn: api.listGlobalTables,
+  })
+
   // Queries
   const { data: catalogs, isLoading: isLoadingCatalogs } = useQuery<Catalog[], Error>({
     queryKey: ['catalogs'],
@@ -729,6 +776,10 @@ function SchemaStudioPageContent() {
       // Invalidate and refetch catalogs
       await queryClientInstance.invalidateQueries({ queryKey: ['catalogs'] })
       await queryClientInstance.refetchQueries({ queryKey: ['catalogs'] })
+
+      // Invalidate and refetch global tables
+      await queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
+      await queryClientInstance.refetchQueries({ queryKey: ['globalTables'] })
 
       // Invalidate and refetch schemas if a catalog is selected
       if (selectedCatalogName && selectedCatalogName !== '__ALL__') {
@@ -774,6 +825,7 @@ function SchemaStudioPageContent() {
     },
     onSuccess: () => {
       queryClientInstance.invalidateQueries({ queryKey: ['tableRelations'] })
+      queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
     },
   })
 
@@ -781,6 +833,7 @@ function SchemaStudioPageContent() {
     mutationFn: api.deleteTableRelation,
     onSuccess: () => {
       queryClientInstance.invalidateQueries({ queryKey: ['tableRelations'] })
+      queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
     },
   })
 
@@ -813,6 +866,10 @@ function SchemaStudioPageContent() {
           <TabsTrigger value="data-sources">
             <Database className="w-4 h-4 mr-2" />
             Data Sources
+          </TabsTrigger>
+          <TabsTrigger value="global-tables">
+            <Globe className="w-4 h-4 mr-2" />
+            Global Tables
           </TabsTrigger>
           <TabsTrigger value="studio">
             <GitMerge className="w-4 h-4 mr-2" />
@@ -947,6 +1004,31 @@ function SchemaStudioPageContent() {
                     key={table.Name}
                     catalogName={selectedCatalogName!}
                     schemaName={selectedSchemaName!}
+                    tableName={table.Name}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Global Tables Tab */}
+        <TabsContent value="global-tables" className="flex-1 overflow-hidden mt-4 flex flex-col">
+          <div className="flex-1 overflow-y-auto">
+            {isLoadingGlobalTables ? (
+              <div className="text-muted-foreground">Loading global tables...</div>
+            ) : globalTables.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>No global tables found. Create table relations in the Studio tab to generate global tables.</p>
+              </div>
+            ) : (
+              <div className="max-w-4xl">
+                <div className="text-sm font-semibold text-muted-foreground mb-2 px-3">
+                  Global Tables ({globalTables.length})
+                </div>
+                {globalTables.map((table) => (
+                  <GlobalTableItem
+                    key={table.Name}
                     tableName={table.Name}
                   />
                 ))}
