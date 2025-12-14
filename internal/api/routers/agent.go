@@ -5,6 +5,9 @@ import (
 	"net/http"
 
 	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
+	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
+	"github.com/guilherme096/data-sync/pkg/data-sync/query"
+	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 )
 
 type ChatMessage struct {
@@ -18,15 +21,29 @@ type ChatRequest struct {
 }
 
 type ChatResponse struct {
-	Message string `json:"message"`
+	Message     string       `json:"message"`
+	ToolResults []ToolResult `json:"toolResults,omitempty"`
+}
+
+type ToolResult struct {
+	ToolName string      `json:"toolName"`
+	Data     interface{} `json:"data"`
 }
 
 type ChatbotRouter struct {
-	agent chatbot.AgentActions
+	agent      chatbot.AgentActions
+	translator query.QueryTranslator
+	discovery  discovery.MetadataDiscovery
+	storage    storage.MetadataStorage
 }
 
-func NewChatbotRouter(agent chatbot.AgentActions) *ChatbotRouter {
-	return &ChatbotRouter{agent: agent}
+func NewChatbotRouter(agent chatbot.AgentActions, translator query.QueryTranslator, discovery discovery.MetadataDiscovery, storage storage.MetadataStorage) *ChatbotRouter {
+	return &ChatbotRouter{
+		agent:      agent,
+		translator: translator,
+		discovery:  discovery,
+		storage:    storage,
+	}
 }
 
 func (r *ChatbotRouter) RegisterRoutes(mux *http.ServeMux) {
@@ -60,22 +77,30 @@ func (r *ChatbotRouter) handleSendMessage(w http.ResponseWriter, req *http.Reque
 		})
 	}
 
-	// Get response from chatbot with history
-	var response string
-	var err error
-	if len(history) > 0 {
-		response, err = r.agent.SendMessageWithHistory(chatReq.Message, history)
-	} else {
-		response, err = r.agent.SendMessage(chatReq.Message)
-	}
+	// Create tool executor with translator, discovery, and storage
+	toolExecutor := chatbot.NewToolExecutor(r.translator, r.discovery, r.storage)
 
+	// Get response from chatbot with tools
+	agentResponse, err := r.agent.SendMessageWithTools(chatReq.Message, history, toolExecutor)
 	if err != nil {
 		http.Error(w, "Failed to send message: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Convert tool results to API format
+	var toolResults []ToolResult
+	for _, tr := range agentResponse.ToolResults {
+		toolResults = append(toolResults, ToolResult{
+			ToolName: tr.ToolName,
+			Data:     tr.Data,
+		})
+	}
+
 	// Return JSON response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(ChatResponse{Message: response})
+	json.NewEncoder(w).Encode(ChatResponse{
+		Message:     agentResponse.Message,
+		ToolResults: toolResults,
+	})
 }
