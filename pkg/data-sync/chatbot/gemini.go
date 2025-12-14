@@ -72,3 +72,134 @@ func (g *GeminiClient) SendMessageWithHistory(message string, history []ChatMess
 
 	return res.Text(), nil
 }
+
+func (g *GeminiClient) SendMessageWithTools(message string, history []ChatMessage, toolExecutor ToolExecutor) (*AgentResponse, error) {
+	// Convert history to Gemini format
+	var contents []*genai.Content
+
+	for _, msg := range history {
+		// Map frontend roles to Gemini roles
+		role := msg.Role
+		if role == "assistant" {
+			role = "model"
+		}
+
+		// Create content for this message with the correct role
+		msgContents := genai.Text(msg.Content)
+		if len(msgContents) > 0 {
+			msgContents[0].Role = role
+			contents = append(contents, msgContents...)
+		}
+	}
+
+	// Add current user message
+	userContents := genai.Text(message)
+	if len(userContents) > 0 {
+		userContents[0].Role = "user"
+		contents = append(contents, userContents...)
+	}
+
+	// Build tool declarations
+	tools := BuildToolDeclarations()
+
+	// Track tool results for response
+	var toolResults []ToolResult
+
+	// System instruction to guide Gemini on how to use the tools
+	systemInstruction := `You are a helpful data assistant with access to a federated data system.
+
+IMPORTANT GUIDELINES:
+1. When users ask what tables are available (e.g., "what tables do I have?", "show me available tables"), ALWAYS use listGlobalTables first.
+2. When users ask to see, query, or analyze data (e.g., "show me clients", "how many orders"), use executeGlobalQuery with SQL queries on GLOBAL TABLES.
+3. If you encounter an error saying a table doesn't exist, use listGlobalTables to see what tables are actually available.
+4. Global tables abstract physical data sources - users query logical table names like "clients" or "orders", not physical catalog.schema.table names.
+5. Always use executeGlobalQuery for data retrieval queries - construct proper SQL SELECT statements.
+6. The discoverMetadata tool is for exploring physical catalogs/schemas/tables/columns - use it when users ask about the underlying data sources.
+7. Provide friendly, conversational responses that explain the data you found.
+
+Example interactions:
+- "Show me all clients" → listGlobalTables (to verify "clients" exists), then executeGlobalQuery with "SELECT * FROM clients"
+- "How many orders are there?" → executeGlobalQuery with "SELECT COUNT(*) FROM orders"
+- "What tables do I have?" → listGlobalTables
+- "Show me clients from USA" → executeGlobalQuery with "SELECT * FROM clients WHERE country = 'USA'"
+- "What catalogs exist?" → discoverMetadata with level="catalogs"`
+
+	// Generate content with tools - may require multiple rounds
+	maxIterations := 5
+	for i := 0; i < maxIterations; i++ {
+		// Generate response with tools
+		res, err := g.client.Models.GenerateContent(g.ctx, "gemini-2.5-flash", contents, &genai.GenerateContentConfig{
+			Tools:             tools,
+			SystemInstruction: genai.NewContentFromText(systemInstruction, "system"),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate content with tools: %w", err)
+		}
+
+		// Check if Gemini wants to call a function
+		if len(res.Candidates) == 0 || len(res.Candidates[0].Content.Parts) == 0 {
+			return &AgentResponse{
+				Message:     "",
+				ToolResults: toolResults,
+			}, nil
+		}
+
+		// Look for function calls in the response
+		var hasFunctionCalls bool
+		for _, part := range res.Candidates[0].Content.Parts {
+			if part.FunctionCall != nil {
+				hasFunctionCalls = true
+				break
+			}
+		}
+
+		// If no function calls, we have the final response
+		if !hasFunctionCalls {
+			return &AgentResponse{
+				Message:     res.Text(),
+				ToolResults: toolResults,
+			}, nil
+		}
+
+		// Execute each function call and collect responses
+		for _, part := range res.Candidates[0].Content.Parts {
+			if fc := part.FunctionCall; fc != nil {
+				// Execute the tool
+				result, err := toolExecutor.ExecuteTool(fc.Name, fc.Args)
+				if err != nil {
+					// Create error response
+					result = map[string]interface{}{
+						"error": err.Error(),
+					}
+				}
+
+				// Track tool result
+				toolResults = append(toolResults, ToolResult{
+					ToolName: fc.Name,
+					Data:     result,
+				})
+
+				// Convert result to map[string]any for FunctionResponse
+				resultMap, ok := result.(map[string]interface{})
+				if !ok {
+					// If result is not a map, wrap it
+					resultMap = map[string]interface{}{
+						"result": result,
+					}
+				}
+
+				// Add function response to conversation
+				functionContent := genai.NewContentFromFunctionResponse(fc.Name, resultMap, "function")
+				contents = append(contents, functionContent)
+			}
+		}
+
+		// Continue to next iteration to get Gemini's response based on function results
+	}
+
+	// Max iterations reached
+	return &AgentResponse{
+		Message:     "I apologize, but I needed to use too many tools to answer your question. Please try rephrasing or breaking down your request.",
+		ToolResults: toolResults,
+	}, nil
+}

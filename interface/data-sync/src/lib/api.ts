@@ -89,6 +89,16 @@ export type QueryResult = {
   Rows: Record<string, unknown>[] | null;
 };
 
+export type ToolResult = {
+  toolName: string;
+  data: any;
+};
+
+export type ChatResponse = {
+  message: string;
+  toolResults?: ToolResult[];
+};
+
 export type SyncResponse = {
   status: string;
   message: string;
@@ -354,7 +364,7 @@ export const api = {
   },
 
   // Chat API
-  sendChatMessage: async (message: string, conversationHistory: unknown[]): Promise<string> => {
+  sendChatMessage: async (message: string, conversationHistory: unknown[]): Promise<ChatResponse> => {
     // Map conversation history to backend format (role and content only)
     const history = (conversationHistory as Array<{ role: string; content: string }>).map(m => ({
       role: m.role,
@@ -375,7 +385,7 @@ export const api = {
     }
 
     const data = await res.json();
-    return data.message;
+    return data; // Return full ChatResponse with message and toolResults
   },
 
   // Table Relations API
