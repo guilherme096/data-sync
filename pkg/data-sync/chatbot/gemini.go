@@ -350,6 +350,19 @@ Example interactions:
 	}, nil
 }
 
+// SendMessageWithConfig sends a message to Gemini with custom configuration
+// This is useful for features like JSON mode or other structured outputs
+func (g *GeminiClient) SendMessageWithConfig(ctx context.Context, message string, config *genai.GenerateContentConfig) (string, error) {
+	contents := genai.Text(message)
+
+	res, err := g.client.Models.GenerateContent(ctx, "gemini-2.5-flash", contents, config)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate content: %w", err)
+	}
+
+	return res.Text(), nil
+}
+
 // extractSQLFromResponse extracts SQL code from markdown code blocks
 func extractSQLFromResponse(response string) string {
 	// Regular expression to find markdown code blocks.

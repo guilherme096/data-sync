@@ -19,6 +19,7 @@ func NewSyncRouter(sync sync.MetadataSync) *SyncRouter {
 
 func (r *SyncRouter) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /sync", r.handleSync)
+	mux.HandleFunc("GET /sync/status", r.handleSyncStatus)
 }
 
 func (r *SyncRouter) handleSync(w http.ResponseWriter, req *http.Request) {
@@ -33,4 +34,15 @@ func (r *SyncRouter) handleSync(w http.ResponseWriter, req *http.Request) {
 		"status":  "success",
 		"message": "Metadata sync completed successfully",
 	})
+}
+
+func (r *SyncRouter) handleSyncStatus(w http.ResponseWriter, req *http.Request) {
+	status, err := r.sync.CheckSyncStatus()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }

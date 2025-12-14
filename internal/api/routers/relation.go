@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
+	"github.com/guilherme096/data-sync/pkg/data-sync/matching"
 	"github.com/guilherme096/data-sync/pkg/data-sync/models"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 )
@@ -13,12 +15,14 @@ import (
 type RelationRouter struct {
 	storage   storage.MetadataStorage
 	discovery discovery.MetadataDiscovery
+	matcher   *matching.Matcher
 }
 
-func NewRelationRouter(storage storage.MetadataStorage, discovery discovery.MetadataDiscovery) *RelationRouter {
+func NewRelationRouter(storage storage.MetadataStorage, discovery discovery.MetadataDiscovery, matcher *matching.Matcher) *RelationRouter {
 	return &RelationRouter{
 		storage:   storage,
 		discovery: discovery,
+		matcher:   matcher,
 	}
 }
 
@@ -27,6 +31,7 @@ func (r *RelationRouter) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /relations", r.handleListRelations)
 	mux.HandleFunc("GET /relations/{id}", r.handleGetRelation)
 	mux.HandleFunc("DELETE /relations/{id}", r.handleDeleteRelation)
+	mux.HandleFunc("POST /relations/auto-match", r.handleAutoMatch)
 }
 
 func (r *RelationRouter) handleCreateRelation(w http.ResponseWriter, req *http.Request) {
@@ -200,6 +205,190 @@ func (r *RelationRouter) discoverAndCreateColumnsFromRelation(relation *models.T
 				fmt.Printf("Warning: failed to create column mapping for '%s' in %s.%s.%s: %v\n",
 					col.Name, physTable.catalog, physTable.schema, physTable.table, err)
 			}
+		}
+	}
+
+	return nil
+}
+
+// AutoMatchRequest specifies parameters for auto-matching
+type AutoMatchRequest struct {
+	MaxSuggestions int  `json:"maxSuggestions"` // Optional, defaults to 5
+	AutoCreate     bool `json:"autoCreate"`     // If true, create relations immediately
+}
+
+// AutoMatchResponse returns suggestions and optionally created relations
+type AutoMatchResponse struct {
+	Suggestions      []matching.RelationSuggestion `json:"suggestions"`
+	CreatedRelations []*models.TableRelation       `json:"createdRelations,omitempty"`
+	Errors           []string                      `json:"errors,omitempty"`
+}
+
+func (r *RelationRouter) handleAutoMatch(w http.ResponseWriter, req *http.Request) {
+	var matchReq AutoMatchRequest
+	if err := json.NewDecoder(req.Body).Decode(&matchReq); err != nil {
+		// Use defaults if no body provided or invalid JSON
+		matchReq.MaxSuggestions = 5
+		matchReq.AutoCreate = true
+	}
+
+	if matchReq.MaxSuggestions <= 0 {
+		matchReq.MaxSuggestions = 5
+	}
+
+	// Gather metadata for matching context
+	ctx, err := r.buildMatchingContext(matchReq.MaxSuggestions)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to build matching context: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get suggestions from matching service
+	suggestions, err := r.matcher.SuggestRelations(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get suggestions: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := AutoMatchResponse{
+		Suggestions: suggestions,
+	}
+
+	// Auto-create relations if requested
+	if matchReq.AutoCreate {
+		createdRelations, errors := r.createSuggestedRelations(suggestions)
+		response.CreatedRelations = createdRelations
+		response.Errors = errors
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (r *RelationRouter) buildMatchingContext(maxSuggestions int) (matching.MatchingContext, error) {
+	// Discover all physical tables
+	catalogs, err := r.discovery.DiscoverCatalogs()
+	if err != nil {
+		return matching.MatchingContext{}, err
+	}
+
+	var physicalTables []matching.PhysicalTableInfo
+
+	for _, catalog := range catalogs {
+		schemas, err := r.discovery.DiscoverSchemas(catalog.Name)
+		if err != nil {
+			continue // Skip catalogs with errors
+		}
+
+		for _, schema := range schemas {
+			tables, err := r.discovery.DiscoverTables(catalog.Name, schema.Name)
+			if err != nil {
+				continue
+			}
+
+			for _, table := range tables {
+				columns, err := r.discovery.DiscoverColumns(catalog.Name, schema.Name, table.Name)
+				if err != nil {
+					continue
+				}
+
+				columnInfo := make([]matching.ColumnInfo, len(columns))
+				for i, col := range columns {
+					columnInfo[i] = matching.ColumnInfo{
+						Name:     col.Name,
+						DataType: col.DataType,
+					}
+				}
+
+				physicalTables = append(physicalTables, matching.PhysicalTableInfo{
+					Catalog: catalog.Name,
+					Schema:  schema.Name,
+					Table:   table.Name,
+					Columns: columnInfo,
+				})
+			}
+		}
+	}
+
+	// Get existing relations
+	existingRelations, err := r.storage.ListTableRelations()
+	if err != nil {
+		return matching.MatchingContext{}, err
+	}
+
+	return matching.MatchingContext{
+		PhysicalTables:    physicalTables,
+		ExistingRelations: existingRelations,
+		MaxSuggestions:    maxSuggestions,
+	}, nil
+}
+
+func (r *RelationRouter) createSuggestedRelations(suggestions []matching.RelationSuggestion) ([]*models.TableRelation, []string) {
+	var createdRelations []*models.TableRelation
+	var errors []string
+
+	existingRelations, _ := r.storage.ListTableRelations()
+	existingNames := make(map[string]bool)
+	for _, rel := range existingRelations {
+		existingNames[rel.Name] = true
+	}
+
+	for _, suggestion := range suggestions {
+		relation := suggestion.ToTableRelation()
+
+		// Handle duplicate names
+		originalName := relation.Name
+		suffix := 1
+		for existingNames[relation.Name] {
+			relation.Name = fmt.Sprintf("%s_v%d", originalName, suffix)
+			suffix++
+		}
+
+		relation.ID = fmt.Sprintf("auto_%d", time.Now().UnixNano())
+
+		// Validate relation before creating
+		if err := r.validateRelation(relation); err != nil {
+			errors = append(errors, fmt.Sprintf("Invalid relation '%s': %v", relation.Name, err))
+			continue
+		}
+
+		if err := r.storage.CreateTableRelation(relation); err != nil {
+			errors = append(errors, fmt.Sprintf("Failed to create '%s': %v", relation.Name, err))
+			continue
+		}
+
+		// Auto-create global table (existing logic)
+		if err := r.autoCreateGlobalTableFromRelation(relation); err != nil {
+			fmt.Printf("Warning: failed to auto-create global table for '%s': %v\n", relation.Name, err)
+		}
+
+		existingNames[relation.Name] = true
+		createdRelations = append(createdRelations, relation)
+	}
+
+	return createdRelations, errors
+}
+
+func (r *RelationRouter) validateRelation(relation *models.TableRelation) error {
+	// Validate left table exists
+	if relation.LeftTable.Type == "physical" {
+		if _, err := r.discovery.DiscoverColumns(
+			relation.LeftTable.Catalog,
+			relation.LeftTable.Schema,
+			relation.LeftTable.Table,
+		); err != nil {
+			return fmt.Errorf("left table not found: %w", err)
+		}
+	}
+
+	// Validate right table exists
+	if relation.RightTable.Type == "physical" {
+		if _, err := r.discovery.DiscoverColumns(
+			relation.RightTable.Catalog,
+			relation.RightTable.Schema,
+			relation.RightTable.Table,
+		); err != nil {
+			return fmt.Errorf("right table not found: %w", err)
 		}
 	}
 

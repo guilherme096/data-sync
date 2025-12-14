@@ -14,6 +14,14 @@ type MetadataSync interface {
 	SyncTables(catalogName, schemaName string) error
 	SyncColumns(catalogName, schemaName, tableName string) error
 	SyncAll() error
+	CheckSyncStatus() (SyncStatus, error)
+}
+
+type SyncStatus struct {
+	NeedsSync        bool   `json:"needsSync"`
+	DiscoveredCount  int    `json:"discoveredCount"`
+	StoredCount      int    `json:"storedCount"`
+	Message          string `json:"message"`
 }
 
 type metadataSync struct {
@@ -159,4 +167,40 @@ func (s *metadataSync) SyncAll() error {
 	log.Printf("Full sync completed: %d catalogs, %d schemas, %d tables, %d columns",
 		len(catalogs), totalSchemas, totalTables, totalColumns)
 	return nil
+}
+
+func (s *metadataSync) CheckSyncStatus() (SyncStatus, error) {
+	// Get stored catalogs count
+	storedCatalogs, err := s.storage.ListCatalogs()
+	if err != nil {
+		return SyncStatus{}, fmt.Errorf("failed to list stored catalogs: %w", err)
+	}
+
+	// Get discovered catalogs count
+	discoveredCatalogs, err := s.discovery.DiscoverCatalogs()
+	if err != nil {
+		return SyncStatus{}, fmt.Errorf("failed to discover catalogs: %w", err)
+	}
+
+	storedCount := len(storedCatalogs)
+	discoveredCount := len(discoveredCatalogs)
+
+	// Check if sync is needed
+	needsSync := false
+	message := "Metadata is up to date"
+
+	if storedCount == 0 {
+		needsSync = true
+		message = "No metadata found. Initial sync required"
+	} else if discoveredCount != storedCount {
+		needsSync = true
+		message = fmt.Sprintf("Schema changes detected: %d catalogs in database, %d in storage", discoveredCount, storedCount)
+	}
+
+	return SyncStatus{
+		NeedsSync:       needsSync,
+		DiscoveredCount: discoveredCount,
+		StoredCount:     storedCount,
+		Message:         message,
+	}, nil
 }

@@ -85,6 +85,27 @@ export type TableRelation = {
   description?: string;
 };
 
+export type RelationSuggestion = {
+  name: string;
+  leftTable: TableSource;
+  rightTable: TableSource;
+  relationType: 'JOIN' | 'UNION';
+  joinColumn?: JoinColumn;
+  description: string;
+  confidence: number;
+};
+
+export type AutoMatchRequest = {
+  maxSuggestions?: number;
+  autoCreate?: boolean;
+};
+
+export type AutoMatchResponse = {
+  suggestions: RelationSuggestion[];
+  createdRelations?: TableRelation[];
+  errors?: string[];
+};
+
 export type QueryResult = {
   Rows: Record<string, unknown>[] | null;
 };
@@ -106,6 +127,13 @@ export type QueryGenerationResponse = {
 
 export type SyncResponse = {
   status: string;
+  message: string;
+};
+
+export type SyncStatus = {
+  needsSync: boolean;
+  discoveredCount: number;
+  storedCount: number;
   message: string;
 };
 
@@ -163,6 +191,15 @@ export const api = {
     if (!res.ok) {
         const errText = await res.text();
         throw new Error(errText || 'Sync failed');
+    }
+    return res.json();
+  },
+
+  getSyncStatus: async (): Promise<SyncStatus> => {
+    const res = await fetch(`${API_BASE}/sync/status`);
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || 'Failed to get sync status');
     }
     return res.json();
   },
@@ -455,5 +492,18 @@ export const api = {
       const errText = await res.text();
       throw new Error(errText || 'Failed to delete table relation');
     }
+  },
+
+  autoMatchRelations: async (request: AutoMatchRequest = {}): Promise<AutoMatchResponse> => {
+    const res = await fetch(`${API_BASE}/relations/auto-match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to auto-match relations');
+    }
+    return res.json();
   },
 };

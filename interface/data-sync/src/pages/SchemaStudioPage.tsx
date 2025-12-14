@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel, type TableRelation, type TableSource, type GlobalTable, type GlobalColumn } from '@/lib/api'
-import { Plus, Database, GitMerge, Search, Zap, X, Globe } from 'lucide-react'
+import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel, type TableRelation, type TableSource, type GlobalTable, type GlobalColumn, type AutoMatchResponse, type SyncStatus } from '@/lib/api'
+import { Plus, Database, GitMerge, Search, Zap, X, Globe, Sparkles, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 
 const queryClient = new QueryClient();
@@ -732,13 +732,14 @@ function SchemaStudioPageContent() {
   const queryClientInstance = useQueryClient()
 
   // Data Sources tab state
-  const [selectedCatalogName, setSelectedCatalogName] = useState<string | null>(null)
-  const [selectedSchemaName, setSelectedSchemaName] = useState<string | null>(null)
+  const [selectedCatalogName, setSelectedCatalogName] = useState<string | null>('__ALL__')
+  const [selectedSchemaName, setSelectedSchemaName] = useState<string | null>('__ALL__')
   const [tableSearch, setTableSearch] = useState('')
 
   // Studio tab state
   const [selectedRelation, setSelectedRelation] = useState<TableRelation | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [matchResults, setMatchResults] = useState<AutoMatchResponse | null>(null)
 
   // Load relations from API
   const { data: relations = [], isLoading: isLoadingRelations } = useQuery<TableRelation[], Error>({
@@ -770,6 +771,13 @@ function SchemaStudioPageContent() {
     enabled: !!selectedCatalogName && selectedCatalogName !== '__ALL__' && !!selectedSchemaName && selectedSchemaName !== '__ALL__',
   })
 
+  // Query sync status
+  const { data: syncStatus } = useQuery<SyncStatus, Error>({
+    queryKey: ['syncStatus'],
+    queryFn: api.getSyncStatus,
+    refetchInterval: 10000, // Refetch every 10 seconds
+  })
+
   const syncMutation = useMutation({
     mutationFn: api.syncMetadata,
     onSuccess: async () => {
@@ -780,6 +788,9 @@ function SchemaStudioPageContent() {
       // Invalidate and refetch global tables
       await queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
       await queryClientInstance.refetchQueries({ queryKey: ['globalTables'] })
+
+      // Invalidate sync status
+      await queryClientInstance.invalidateQueries({ queryKey: ['syncStatus'] })
 
       // Invalidate and refetch schemas if a catalog is selected
       if (selectedCatalogName && selectedCatalogName !== '__ALL__') {
@@ -832,6 +843,15 @@ function SchemaStudioPageContent() {
   const deleteRelationMutation = useMutation({
     mutationFn: api.deleteTableRelation,
     onSuccess: () => {
+      queryClientInstance.invalidateQueries({ queryKey: ['tableRelations'] })
+      queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
+    },
+  })
+
+  const autoMatchMutation = useMutation({
+    mutationFn: () => api.autoMatchRelations({ maxSuggestions: 10, autoCreate: true }),
+    onSuccess: (data) => {
+      setMatchResults(data)
       queryClientInstance.invalidateQueries({ queryKey: ['tableRelations'] })
       queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
     },
@@ -926,19 +946,25 @@ function SchemaStudioPageContent() {
 
               <Button
                 onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
+                disabled={syncMutation.isPending || !syncStatus?.needsSync}
                 variant="outline"
                 size="sm"
+                title={syncStatus?.message || 'Checking sync status...'}
               >
                 {syncMutation.isPending ? (
                   <>
                     <Zap className="w-4 h-4 mr-2 animate-spin" />
                     Syncing...
                   </>
+                ) : syncStatus?.needsSync ? (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Sync Required
+                  </>
                 ) : (
                   <>
                     <Zap className="w-4 h-4 mr-2" />
-                    Sync
+                    Up to Date
                   </>
                 )}
               </Button>
@@ -1041,6 +1067,71 @@ function SchemaStudioPageContent() {
         <TabsContent value="studio" className="flex-1 overflow-hidden mt-4">
           <div className="h-full overflow-y-auto">
             <div className="max-w-5xl mx-auto space-y-4">
+              {/* Magic Button Header */}
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold">Table Relations</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Manually create or auto-discover table relations
+                  </p>
+                </div>
+                <Button
+                  onClick={() => autoMatchMutation.mutate()}
+                  disabled={autoMatchMutation.isPending}
+                  className="gap-2"
+                  variant="default"
+                >
+                  {autoMatchMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Auto-Match Relations
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Show results if available */}
+              {matchResults && (
+                <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold mb-2">Auto-Match Results</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>Suggestions found:</span>
+                      <span className="font-mono">{matchResults.suggestions.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Relations created:</span>
+                      <span className="font-mono text-green-600">
+                        {matchResults.createdRelations?.length || 0}
+                      </span>
+                    </div>
+                    {matchResults.errors && matchResults.errors.length > 0 && (
+                      <div className="mt-2">
+                        <span className="text-destructive">Errors:</span>
+                        <ul className="list-disc list-inside text-destructive text-xs mt-1">
+                          {matchResults.errors.map((err, i) => (
+                            <li key={i}>{err}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMatchResults(null)}
+                    className="mt-2"
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              )}
+
               {relations.map((relation) => (
                 <RelationCard
                   key={relation.id}

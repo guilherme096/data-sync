@@ -9,6 +9,7 @@ import (
 	"github.com/guilherme096/data-sync/internal/trino"
 	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
+	"github.com/guilherme096/data-sync/pkg/data-sync/matching"
 	"github.com/guilherme096/data-sync/pkg/data-sync/query"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
@@ -75,7 +76,12 @@ func main() {
 	queryTranslator := query.NewTranslator(metadataStorage, engine)
 	log.Println("Query translator initialized")
 
-	srv := api.NewServer(":"+port, engine, metadataStorage, syncService, metadataDiscovery, chatbotClient, queryTranslator)
+	// Initialize matching service with Gemini strategy
+	geminiStrategy := matching.NewGeminiMatchingStrategy(chatbotClient)
+	matcher := matching.NewMatcher(geminiStrategy)
+	log.Println("Table relation matcher initialized with Gemini strategy")
+
+	srv := api.NewServer(":"+port, engine, metadataStorage, syncService, metadataDiscovery, chatbotClient, queryTranslator, matcher)
 	if err := srv.Run(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
