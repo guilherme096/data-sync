@@ -4,13 +4,17 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Send, Loader2, Search, Database, Table, Layers } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, type ToolResult } from '@/lib/api'
+import { QueryResultTable } from '@/components/QueryResultTable'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  toolResults?: ToolResult[]
 }
 
 export function ChatPage() {
@@ -46,8 +50,9 @@ export function ChatPage() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response,
+        content: response.message,
         timestamp: new Date(),
+        toolResults: response.toolResults,
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
@@ -177,8 +182,8 @@ export function ChatPage() {
     <div className="flex h-screen flex-col">
       {/* Thread Messages */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-8 space-y-8">
-          {messages.map((message, index) => (
+        <div className="mx-auto max-w-5xl px-4 py-8 space-y-8">
+          {messages.map((message) => (
             <div key={message.id} className="space-y-4">
               {/* User Query */}
               {message.role === 'user' && (
@@ -197,11 +202,91 @@ export function ChatPage() {
                 <Card className="border-0 shadow-none bg-transparent">
                   <div className="space-y-4">
                     <Separator />
-                    <div className="prose prose-sm max-w-none">
-                      <p className="text-sm leading-7 text-foreground whitespace-pre-wrap">
+                    <div className="prose prose-lg max-w-none dark:prose-invert">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => <p className="mb-4 text-lg leading-8">{children}</p>,
+                          ul: ({ children }) => <ul className="mb-4 ml-6 list-disc space-y-2 text-lg">{children}</ul>,
+                          ol: ({ children }) => <ol className="mb-4 ml-6 list-decimal space-y-2 text-lg">{children}</ol>,
+                          li: ({ children }) => <li className="text-lg leading-8">{children}</li>,
+                          h1: ({ children }) => <h1 className="mb-4 mt-6 text-3xl font-bold">{children}</h1>,
+                          h2: ({ children }) => <h2 className="mb-3 mt-5 text-2xl font-semibold">{children}</h2>,
+                          h3: ({ children }) => <h3 className="mb-2 mt-4 text-xl font-semibold">{children}</h3>,
+                          code: ({ className, children }) => {
+                            const isInline = !className;
+                            return isInline ? (
+                              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-base">{children}</code>
+                            ) : (
+                              <code className={className}>{children}</code>
+                            );
+                          },
+                          pre: ({ children }) => <pre className="mb-4 overflow-x-auto rounded-lg bg-muted p-4 text-base">{children}</pre>,
+                          blockquote: ({ children }) => <blockquote className="border-l-4 border-muted-foreground pl-4 italic text-lg">{children}</blockquote>,
+                          a: ({ href, children }) => <a href={href} className="text-primary underline hover:no-underline text-lg">{children}</a>,
+                          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                          em: ({ children }) => <em className="italic">{children}</em>,
+                          table: ({ children }) => (
+                            <div className="my-6 w-full overflow-x-auto">
+                              <table className="w-full border-collapse border border-border text-base">
+                                {children}
+                              </table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+                          th: ({ children }) => <th className="border border-border px-4 py-3 text-left font-semibold text-base">{children}</th>,
+                          td: ({ children }) => <td className="border border-border px-4 py-3 text-base">{children}</td>,
+                        }}
+                      >
                         {message.content}
-                      </p>
+                      </ReactMarkdown>
                     </div>
+                    {/* Render tool results (query results, metadata, etc.) */}
+                    {message.toolResults && message.toolResults.length > 0 && (
+                      <div className="space-y-3">
+                        {message.toolResults.map((toolResult, idx) => (
+                          <div key={idx}>
+                            {toolResult.toolName === 'executeGlobalQuery' && (
+                              <QueryResultTable data={toolResult.data} />
+                            )}
+                            {toolResult.toolName === 'listGlobalTables' && toolResult.data.tables && (
+                              <Card className="mt-2 border-purple-200 dark:border-purple-800">
+                                <div className="p-4">
+                                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                    <Table className="h-4 w-4" />
+                                    Available Global Tables ({toolResult.data.count})
+                                  </h4>
+                                  <div className="space-y-2">
+                                    {toolResult.data.tables.map((table: any, tableIdx: number) => (
+                                      <div key={tableIdx} className="flex items-start gap-2 text-sm border-l-2 border-purple-300 dark:border-purple-700 pl-3 py-1">
+                                        <Database className="h-4 w-4 mt-0.5 text-purple-600 dark:text-purple-400" />
+                                        <div>
+                                          <div className="font-medium">{table.name}</div>
+                                          {table.description && (
+                                            <div className="text-xs text-muted-foreground">{table.description}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </Card>
+                            )}
+                            {toolResult.toolName === 'discoverMetadata' && (
+                              <Card className="mt-2 border-green-200 dark:border-green-800">
+                                <div className="p-4">
+                                  <pre className="text-xs overflow-x-auto">
+                                    {JSON.stringify(toolResult.data, null, 2)}
+                                  </pre>
+                                </div>
+                              </Card>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Card>
               )}
@@ -232,7 +317,7 @@ export function ChatPage() {
 
       {/* Fixed Input at Bottom */}
       <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-3xl px-4 py-4">
+        <div className="mx-auto max-w-5xl px-4 py-4">
           <div className="relative">
             <Input
               ref={inputRef}
