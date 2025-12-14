@@ -264,3 +264,264 @@ func buildDiscoverMetadataTool() *genai.FunctionDeclaration {
 		},
 	}
 }
+
+// QueryGeneratorToolExecutor implements ToolExecutor for query generation only (no execution)
+type QueryGeneratorToolExecutor struct {
+	discovery discovery.MetadataDiscovery
+	storage   interface {
+		ListGlobalTables() ([]*models.GlobalTable, error)
+		ListGlobalColumns(globalTableName string) ([]*models.GlobalColumn, error)
+	}
+}
+
+// NewQueryGeneratorToolExecutor creates a tool executor for query generation
+func NewQueryGeneratorToolExecutor(discovery discovery.MetadataDiscovery, storage interface {
+	ListGlobalTables() ([]*models.GlobalTable, error)
+	ListGlobalColumns(globalTableName string) ([]*models.GlobalColumn, error)
+}) ToolExecutor {
+	return &QueryGeneratorToolExecutor{
+		discovery: discovery,
+		storage:   storage,
+	}
+}
+
+// ExecuteTool routes tool calls for query generation
+func (te *QueryGeneratorToolExecutor) ExecuteTool(toolName string, arguments map[string]interface{}) (interface{}, error) {
+	switch toolName {
+	case "listGlobalTables":
+		return te.listGlobalTables(arguments)
+	case "discoverMetadata":
+		return te.discoverMetadata(arguments)
+	case "getTableColumns":
+		return te.getTableColumns(arguments)
+	default:
+		return nil, fmt.Errorf("unknown tool: %s", toolName)
+	}
+}
+
+// listGlobalTables - same as DefaultToolExecutor
+func (te *QueryGeneratorToolExecutor) listGlobalTables(args map[string]interface{}) (interface{}, error) {
+	tables, err := te.storage.ListGlobalTables()
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+		}, nil
+	}
+
+	tableList := make([]map[string]string, len(tables))
+	for i, table := range tables {
+		tableList[i] = map[string]string{
+			"name":        table.Name,
+			"description": table.Description,
+		}
+	}
+
+	return map[string]interface{}{
+		"tables": tableList,
+		"count":  len(tables),
+	}, nil
+}
+
+// discoverMetadata - same as DefaultToolExecutor
+func (te *QueryGeneratorToolExecutor) discoverMetadata(args map[string]interface{}) (interface{}, error) {
+	level, ok := args["level"].(string)
+	if !ok {
+		return map[string]interface{}{
+			"error":      "Invalid level parameter",
+			"suggestion": "Please specify one of: catalogs, schemas, tables, columns",
+		}, nil
+	}
+
+	switch level {
+	case "catalogs":
+		catalogs, err := te.discovery.DiscoverCatalogs()
+		if err != nil {
+			return map[string]interface{}{
+				"error": err.Error(),
+			}, nil
+		}
+		return map[string]interface{}{
+			"level":    "catalogs",
+			"catalogs": catalogs,
+		}, nil
+
+	case "schemas":
+		catalog, ok := args["catalog"].(string)
+		if !ok {
+			return map[string]interface{}{
+				"error":      "Missing catalog parameter",
+				"suggestion": "Please specify a catalog name",
+			}, nil
+		}
+		schemas, err := te.discovery.DiscoverSchemas(catalog)
+		if err != nil {
+			return map[string]interface{}{
+				"error": err.Error(),
+			}, nil
+		}
+		return map[string]interface{}{
+			"level":   "schemas",
+			"catalog": catalog,
+			"schemas": schemas,
+		}, nil
+
+	case "tables":
+		catalog, catalogOk := args["catalog"].(string)
+		schema, schemaOk := args["schema"].(string)
+		if !catalogOk || !schemaOk {
+			return map[string]interface{}{
+				"error":      "Missing catalog or schema parameter",
+				"suggestion": "Please specify both catalog and schema names",
+			}, nil
+		}
+		tables, err := te.discovery.DiscoverTables(catalog, schema)
+		if err != nil {
+			return map[string]interface{}{
+				"error": err.Error(),
+			}, nil
+		}
+		return map[string]interface{}{
+			"level":   "tables",
+			"catalog": catalog,
+			"schema":  schema,
+			"tables":  tables,
+		}, nil
+
+	case "columns":
+		catalog, catalogOk := args["catalog"].(string)
+		schema, schemaOk := args["schema"].(string)
+		table, tableOk := args["table"].(string)
+		if !catalogOk || !schemaOk || !tableOk {
+			return map[string]interface{}{
+				"error":      "Missing catalog, schema, or table parameter",
+				"suggestion": "Please specify catalog, schema, and table names",
+			}, nil
+		}
+		columns, err := te.discovery.DiscoverColumns(catalog, schema, table)
+		if err != nil {
+			return map[string]interface{}{
+				"error": err.Error(),
+			}, nil
+		}
+		return map[string]interface{}{
+			"level":   "columns",
+			"catalog": catalog,
+			"schema":  schema,
+			"table":   table,
+			"columns": columns,
+		}, nil
+
+	default:
+		return map[string]interface{}{
+			"error":      fmt.Sprintf("Invalid level: %s", level),
+			"suggestion": "Please use one of: catalogs, schemas, tables, columns",
+		}, nil
+	}
+}
+
+// getTableColumns gets columns for a global table
+func (te *QueryGeneratorToolExecutor) getTableColumns(args map[string]interface{}) (interface{}, error) {
+	tableName, ok := args["tableName"].(string)
+	if !ok {
+		return map[string]interface{}{
+			"error":      "Invalid tableName parameter",
+			"suggestion": "Please provide a valid global table name",
+		}, nil
+	}
+
+	columns, err := te.storage.ListGlobalColumns(tableName)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+		}, nil
+	}
+
+	columnList := make([]map[string]string, len(columns))
+	for i, col := range columns {
+		columnList[i] = map[string]string{
+			"name":        col.Name,
+			"type":        col.DataType,
+			"description": col.Description,
+		}
+	}
+
+	return map[string]interface{}{
+		"tableName": tableName,
+		"columns":   columnList,
+		"count":     len(columns),
+	}, nil
+}
+
+// BuildQueryGeneratorToolDeclarations returns tool declarations for query generation
+func BuildQueryGeneratorToolDeclarations() []*genai.Tool {
+	return []*genai.Tool{
+		{
+			FunctionDeclarations: []*genai.FunctionDeclaration{
+				buildListGlobalTablesToolForGenerator(),
+				buildGetTableColumnsTool(),
+				buildDiscoverMetadataToolForGenerator(),
+			},
+		},
+	}
+}
+
+// buildListGlobalTablesToolForGenerator - optimized for query generation
+func buildListGlobalTablesToolForGenerator() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        "listGlobalTables",
+		Description: "Lists all available global tables in the system. Use this to understand what tables the user can query. Always call this first to see what data is available.",
+		Parameters: &genai.Schema{
+			Type:       genai.TypeObject,
+			Properties: map[string]*genai.Schema{},
+		},
+	}
+}
+
+// buildGetTableColumnsTool - new tool for getting columns of a global table
+func buildGetTableColumnsTool() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        "getTableColumns",
+		Description: "Gets the columns for a specific global table. Use this to understand what columns are available for a table before generating a query. This helps you create accurate SELECT statements and WHERE clauses.",
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"tableName": {
+					Type:        genai.TypeString,
+					Description: "The name of the global table to get columns for. Example: 'clients', 'orders'",
+				},
+			},
+			Required: []string{"tableName"},
+		},
+	}
+}
+
+// buildDiscoverMetadataToolForGenerator - optimized description for query generation
+func buildDiscoverMetadataToolForGenerator() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        "discoverMetadata",
+		Description: "Discovers metadata about physical data sources. Use this when the user asks about the underlying database structure or wants to query physical tables directly instead of global tables.",
+		Parameters: &genai.Schema{
+			Type: genai.TypeObject,
+			Properties: map[string]*genai.Schema{
+				"level": {
+					Type:        genai.TypeString,
+					Description: "Level of metadata to discover: 'catalogs', 'schemas', 'tables', or 'columns'",
+					Enum:        []string{"catalogs", "schemas", "tables", "columns"},
+				},
+				"catalog": {
+					Type:        genai.TypeString,
+					Description: "Catalog name (required for schemas, tables, columns levels)",
+				},
+				"schema": {
+					Type:        genai.TypeString,
+					Description: "Schema name (required for tables, columns levels)",
+				},
+				"table": {
+					Type:        genai.TypeString,
+					Description: "Table name (required for columns level)",
+				},
+			},
+			Required: []string{"level"},
+		},
+	}
+}

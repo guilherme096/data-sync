@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Play, Eraser, Send, Bot, User, Sparkles, Database, Globe } from 'lucide-react'
+import { Play, Eraser, Send, Bot, User, Sparkles, Database, Globe, Copy, Loader2 } from 'lucide-react'
+import { api } from '@/lib/api'
 import {
   ResizableHandle,
   ResizablePanel,
@@ -40,7 +41,16 @@ interface QueryResult {
   executionTime?: string
 }
 
+type AssistantMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  generatedSQL?: string
+  timestamp: Date
+}
+
 const STORAGE_KEY = 'data-sync-sql-query'
+const CHAT_STORAGE_KEY = 'data-sync-chat-history'
 const DEFAULT_QUERY = '-- Write your SQL query here\nSELECT * FROM global_users LIMIT 10;'
 
 export function QueryPage() {
@@ -60,6 +70,17 @@ export function QueryPage() {
   const [error, setError] = useState<string | null>(null)
   const { theme } = useTheme()
   const [isDark, setIsDark] = useState(false)
+  const [messages, setMessages] = useState<AssistantMessage[]>(() => {
+    // Load chat history from localStorage
+    try {
+      const saved = localStorage.getItem(CHAT_STORAGE_KEY)
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+  const [isChatLoading, setIsChatLoading] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
 
   // Save SQL code to localStorage whenever it changes
   useEffect(() => {
@@ -69,6 +90,15 @@ export function QueryPage() {
       // Ignore localStorage errors
     }
   }, [sqlCode])
+
+  // Save chat history to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [messages])
 
   // Determine if we should use dark theme
   useEffect(() => {
@@ -95,6 +125,13 @@ export function QueryPage() {
       return () => mediaQuery.removeEventListener('change', handleChange)
     }
   }, [theme])
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
+  }, [messages])
 
   const executeQuery = async () => {
     setIsLoading(true)
@@ -134,6 +171,63 @@ export function QueryPage() {
       setError(err instanceof Error ? err.message : 'Unknown error occurred')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleSendChatMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return
+
+    const userMessage: AssistantMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: chatInput.trim(),
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setChatInput('')
+    setIsChatLoading(true)
+
+    try {
+      const response = await api.generateQuery(chatInput.trim(), messages)
+
+      // Debug: log the response to check SQL extraction
+      console.log('Query generation response:', {
+        message: response.message,
+        generatedSQL: response.generatedSQL,
+        hasSQL: !!response.generatedSQL
+      })
+
+      const assistantMessage: AssistantMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response.message,
+        generatedSQL: response.generatedSQL || '', // Ensure it's never undefined
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (error) {
+      console.error('Query generation error:', error)
+      const errorMessage: AssistantMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, something went wrong while generating the query. Please try again.',
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsChatLoading(false)
+    }
+  }
+
+  const handleInsertIntoEditor = (sql: string) => {
+    setSqlCode(sql)
+  }
+
+  const handleChatKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendChatMessage()
     }
   }
 
@@ -310,50 +404,105 @@ export function QueryPage() {
         {/* RIGHT PANEL: AI Agent */}
         <ResizablePanel defaultSize={30} minSize={20}>
           <div className="h-full p-4 flex flex-col gap-4">
-            <div className="flex items-center gap-2 h-9">
-               <Sparkles className="w-4 h-4 text-primary" />
-               <h2 className="text-lg font-semibold tracking-tight">Data Assistant</h2>
+            <div className="flex items-center justify-between h-9">
+              <div className="flex items-center gap-2">
+                 <Sparkles className="w-4 h-4 text-primary" />
+                 <h2 className="text-lg font-semibold tracking-tight">Data Assistant</h2>
+              </div>
+              {messages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => setMessages([])}
+                  title="Clear chat history"
+                >
+                  <Eraser className="w-4 h-4" />
+                </Button>
+              )}
             </div>
 
             <Card className="flex-1 flex flex-col overflow-hidden shadow-sm border-muted-foreground/20">
                {/* Chat History */}
                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/5">
-                  
-                  {/* Bot Welcome Message */}
-                  <div className="flex gap-3">
-                     <Avatar className="h-8 w-8 border">
-                        <AvatarImage src="/bot-avatar.png" />
-                        <AvatarFallback className="bg-primary/10 text-primary"><Bot className="w-4 h-4" /></AvatarFallback>
-                     </Avatar>
-                     <div className="bg-card border p-3 rounded-lg rounded-tl-none shadow-sm text-sm max-w-[85%]">
-                        <p>Hello! I can help you query your global data. Ask me anything, and I'll generate the SQL for you.</p>
-                     </div>
-                  </div>
 
-                  {/* Example User Message */}
-                  <div className="flex gap-3 flex-row-reverse">
-                     <Avatar className="h-8 w-8 border">
-                        <AvatarFallback className="bg-muted"><User className="w-4 h-4" /></AvatarFallback>
-                     </Avatar>
-                     <div className="bg-primary text-primary-foreground p-3 rounded-lg rounded-tr-none shadow-sm text-sm max-w-[85%]">
-                        <p>Show me the top 5 customers by revenue.</p>
-                     </div>
-                  </div>
+                  {/* Welcome Message (only if no messages) */}
+                  {messages.length === 0 && (
+                    <div className="flex gap-3">
+                       <Avatar className="h-8 w-8 border">
+                          <AvatarImage src="/bot-avatar.png" />
+                          <AvatarFallback className="bg-primary/10 text-primary"><Bot className="w-4 h-4" /></AvatarFallback>
+                       </Avatar>
+                       <div className="bg-card border p-3 rounded-lg rounded-tl-none shadow-sm text-sm max-w-[85%]">
+                          <p>Hello! I can help you generate SQL queries. Ask me anything, and I'll create a query for you to use in the editor.</p>
+                       </div>
+                    </div>
+                  )}
 
-                   {/* Example Bot Response */}
-                   <div className="flex gap-3">
-                     <Avatar className="h-8 w-8 border">
-                        <AvatarFallback className="bg-primary/10 text-primary"><Bot className="w-4 h-4" /></AvatarFallback>
-                     </Avatar>
-                     <div className="bg-card border p-3 rounded-lg rounded-tl-none shadow-sm text-sm max-w-[85%] space-y-2">
-                        <p>Here is the query for the top 5 customers:</p>
-                        <div className="bg-muted p-2 rounded border font-mono text-xs overflow-x-auto">
-                           SELECT * FROM global_customers ORDER BY revenue DESC LIMIT 5;
+                  {/* Actual Messages */}
+                  {messages.map((message) => (
+                    <div key={message.id}>
+                      {message.role === 'user' ? (
+                        <div className="flex gap-3 flex-row-reverse">
+                           <Avatar className="h-8 w-8 border">
+                              <AvatarFallback className="bg-muted"><User className="w-4 h-4" /></AvatarFallback>
+                           </Avatar>
+                           <div className="bg-primary text-primary-foreground p-3 rounded-lg rounded-tr-none shadow-sm text-sm max-w-[85%]">
+                              <p>{message.content}</p>
+                           </div>
                         </div>
-                        <Button variant="secondary" size="sm" className="w-full h-7 text-xs">Insert into Editor</Button>
-                     </div>
-                  </div>
+                      ) : (
+                        <div className="flex gap-3">
+                           <Avatar className="h-8 w-8 border">
+                              <AvatarFallback className="bg-primary/10 text-primary"><Bot className="w-4 h-4" /></AvatarFallback>
+                           </Avatar>
+                           <div className="bg-card border p-3 rounded-lg rounded-tl-none shadow-sm text-sm max-w-[85%] space-y-3">
+                              {/* Show message text (remove markdown code blocks for cleaner display) */}
+                              <p className="whitespace-pre-wrap leading-relaxed">
+                                {message.content.replace(/```sql[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim()}
+                              </p>
 
+                              {/* Show generated SQL in a highlighted code block */}
+                              {message.generatedSQL && message.generatedSQL.trim() && (
+                                <>
+                                  <div className="bg-slate-900 dark:bg-slate-950 p-3 rounded-md border border-slate-700">
+                                     <pre className="text-emerald-400 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
+                                       {message.generatedSQL}
+                                     </pre>
+                                  </div>
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    className="w-full h-8 text-xs font-medium"
+                                    onClick={() => handleInsertIntoEditor(message.generatedSQL!)}
+                                  >
+                                    <Copy className="w-3.5 h-3.5 mr-1.5" />
+                                    Insert into Editor
+                                  </Button>
+                                </>
+                              )}
+                           </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Loading State */}
+                  {isChatLoading && (
+                    <div className="flex gap-3">
+                       <Avatar className="h-8 w-8 border">
+                          <AvatarFallback className="bg-primary/10 text-primary"><Bot className="w-4 h-4" /></AvatarFallback>
+                       </Avatar>
+                       <div className="bg-card border p-3 rounded-lg rounded-tl-none shadow-sm text-sm">
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span className="text-muted-foreground">Generating query...</span>
+                          </div>
+                       </div>
+                    </div>
+                  )}
+
+                  <div ref={chatScrollRef} />
                </div>
 
                <Separator />
@@ -361,14 +510,26 @@ export function QueryPage() {
                {/* Input Area */}
                <div className="p-4 bg-card">
                   <div className="relative">
-                     <Input 
-                        placeholder="Ask a question..." 
+                     <Input
+                        placeholder="Ask a question..."
                         className="pr-10"
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={handleChatKeyDown}
+                        disabled={isChatLoading}
                      />
-                     <Button size="icon" variant="ghost" className="absolute right-0 top-0 h-full w-10 text-muted-foreground hover:text-primary">
-                        <Send className="w-4 h-4" />
+                     <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute right-0 top-0 h-full w-10 text-muted-foreground hover:text-primary"
+                        onClick={handleSendChatMessage}
+                        disabled={!chatInput.trim() || isChatLoading}
+                     >
+                        {isChatLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
                      </Button>
                   </div>
                </div>
