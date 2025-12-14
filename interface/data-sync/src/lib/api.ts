@@ -130,6 +130,13 @@ export type SyncResponse = {
   message: string;
 };
 
+export type SyncStatus = {
+  needsSync: boolean;
+  discoveredCount: number;
+  storedCount: number;
+  message: string;
+};
+
 const API_BASE = '/api';
 
 export const api = {
@@ -184,6 +191,15 @@ export const api = {
     if (!res.ok) {
         const errText = await res.text();
         throw new Error(errText || 'Sync failed');
+    }
+    return res.json();
+  },
+
+  getSyncStatus: async (): Promise<SyncStatus> => {
+    const res = await fetch(`${API_BASE}/sync/status`);
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || 'Failed to get sync status');
     }
     return res.json();
   },

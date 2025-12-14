@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel, type TableRelation, type TableSource, type GlobalTable, type GlobalColumn, type AutoMatchResponse } from '@/lib/api'
+import { api, type Catalog, type Schema, type Table as TableModel, type Column as ColumnModel, type TableRelation, type TableSource, type GlobalTable, type GlobalColumn, type AutoMatchResponse, type SyncStatus } from '@/lib/api'
 import { Plus, Database, GitMerge, Search, Zap, X, Globe, Sparkles, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 
@@ -732,8 +732,8 @@ function SchemaStudioPageContent() {
   const queryClientInstance = useQueryClient()
 
   // Data Sources tab state
-  const [selectedCatalogName, setSelectedCatalogName] = useState<string | null>(null)
-  const [selectedSchemaName, setSelectedSchemaName] = useState<string | null>(null)
+  const [selectedCatalogName, setSelectedCatalogName] = useState<string | null>('__ALL__')
+  const [selectedSchemaName, setSelectedSchemaName] = useState<string | null>('__ALL__')
   const [tableSearch, setTableSearch] = useState('')
 
   // Studio tab state
@@ -771,6 +771,13 @@ function SchemaStudioPageContent() {
     enabled: !!selectedCatalogName && selectedCatalogName !== '__ALL__' && !!selectedSchemaName && selectedSchemaName !== '__ALL__',
   })
 
+  // Query sync status
+  const { data: syncStatus } = useQuery<SyncStatus, Error>({
+    queryKey: ['syncStatus'],
+    queryFn: api.getSyncStatus,
+    refetchInterval: 10000, // Refetch every 10 seconds
+  })
+
   const syncMutation = useMutation({
     mutationFn: api.syncMetadata,
     onSuccess: async () => {
@@ -781,6 +788,9 @@ function SchemaStudioPageContent() {
       // Invalidate and refetch global tables
       await queryClientInstance.invalidateQueries({ queryKey: ['globalTables'] })
       await queryClientInstance.refetchQueries({ queryKey: ['globalTables'] })
+
+      // Invalidate sync status
+      await queryClientInstance.invalidateQueries({ queryKey: ['syncStatus'] })
 
       // Invalidate and refetch schemas if a catalog is selected
       if (selectedCatalogName && selectedCatalogName !== '__ALL__') {
@@ -936,19 +946,25 @@ function SchemaStudioPageContent() {
 
               <Button
                 onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
+                disabled={syncMutation.isPending || !syncStatus?.needsSync}
                 variant="outline"
                 size="sm"
+                title={syncStatus?.message || 'Checking sync status...'}
               >
                 {syncMutation.isPending ? (
                   <>
                     <Zap className="w-4 h-4 mr-2 animate-spin" />
                     Syncing...
                   </>
+                ) : syncStatus?.needsSync ? (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Sync Required
+                  </>
                 ) : (
                   <>
                     <Zap className="w-4 h-4 mr-2" />
-                    Sync
+                    Up to Date
                   </>
                 )}
               </Button>

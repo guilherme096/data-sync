@@ -111,7 +111,6 @@ export function ChatPage() {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask anything about your data..."
                 className="h-14 pl-12 pr-14 text-base shadow-lg border-2 focus-visible:ring-2"
-                autoFocus
               />
               <Button
                 onClick={handleSend}
