@@ -30,6 +30,11 @@ type ToolResult struct {
 	Data     interface{} `json:"data"`
 }
 
+type QueryGenerationResponse struct {
+	Message      string `json:"message"`
+	GeneratedSQL string `json:"generatedSQL"`
+}
+
 type ChatbotRouter struct {
 	agent      chatbot.AgentActions
 	translator query.QueryTranslator
@@ -48,6 +53,7 @@ func NewChatbotRouter(agent chatbot.AgentActions, translator query.QueryTranslat
 
 func (r *ChatbotRouter) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/chatbot/message", r.handleSendMessage)
+	mux.HandleFunc("/chatbot/generate-query", r.handleGenerateQuery)
 }
 
 func (r *ChatbotRouter) handleSendMessage(w http.ResponseWriter, req *http.Request) {
@@ -102,5 +108,51 @@ func (r *ChatbotRouter) handleSendMessage(w http.ResponseWriter, req *http.Reque
 	json.NewEncoder(w).Encode(ChatResponse{
 		Message:     agentResponse.Message,
 		ToolResults: toolResults,
+	})
+}
+
+func (r *ChatbotRouter) handleGenerateQuery(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse JSON request
+	var chatReq ChatRequest
+	if err := json.NewDecoder(req.Body).Decode(&chatReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if chatReq.Message == "" {
+		http.Error(w, "Message is required", http.StatusBadRequest)
+		return
+	}
+
+	// Convert history to chatbot format
+	var history []chatbot.ChatMessage
+	for _, msg := range chatReq.History {
+		history = append(history, chatbot.ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	// Create query generator tool executor (no query execution)
+	toolExecutor := chatbot.NewQueryGeneratorToolExecutor(r.discovery, r.storage)
+
+	// Get query generation response from chatbot
+	queryGenResponse, err := r.agent.SendMessageForQueryGeneration(chatReq.Message, history, toolExecutor)
+	if err != nil {
+		http.Error(w, "Failed to generate query: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(QueryGenerationResponse{
+		Message:      queryGenResponse.Message,
+		GeneratedSQL: queryGenResponse.GeneratedSQL,
 	})
 }

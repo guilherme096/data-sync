@@ -99,6 +99,11 @@ export type ChatResponse = {
   toolResults?: ToolResult[];
 };
 
+export type QueryGenerationResponse = {
+  message: string;
+  generatedSQL: string;
+};
+
 export type SyncResponse = {
   status: string;
   message: string;
@@ -386,6 +391,31 @@ export const api = {
 
     const data = await res.json();
     return data; // Return full ChatResponse with message and toolResults
+  },
+
+  // Query Generation API
+  generateQuery: async (message: string, conversationHistory: unknown[]): Promise<QueryGenerationResponse> => {
+    // Map conversation history to backend format (role and content only)
+    const history = (conversationHistory as Array<{ role: string; content: string }>).map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    const res = await fetch(`${API_BASE}/chatbot/generate-query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message, history }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to generate query');
+    }
+
+    const data = await res.json();
+    return data; // Return QueryGenerationResponse with message and generatedSQL
   },
 
   // Table Relations API
