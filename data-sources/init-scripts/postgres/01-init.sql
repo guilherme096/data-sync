@@ -1,40 +1,66 @@
--- PostgreSQL - US Region Data
+-- PostgreSQL - Core System (Basic Customer & Product Data)
 
--- Clients table
-CREATE TABLE clients (
+-- Customers table - Basic customer information
+CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     country VARCHAR(50) NOT NULL,
-    region VARCHAR(20) DEFAULT 'US',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Orders table
-CREATE TABLE orders (
+-- Products table - Basic product catalog
+CREATE TABLE products (
     id SERIAL PRIMARY KEY,
-    client_id INTEGER REFERENCES clients(id),
-    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    total_amount DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending',
-    region VARCHAR(20) DEFAULT 'US'
+    name VARCHAR(100) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert US region clients
-INSERT INTO clients (name, email, country) VALUES
+-- Orders 2023 table - Historical orders
+CREATE TABLE orders_2023 (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id),
+    product_id INTEGER REFERENCES products(id),
+    order_date TIMESTAMP NOT NULL,
+    quantity INTEGER NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'completed',
+    year INTEGER DEFAULT 2023
+);
+
+-- Insert customers
+INSERT INTO customers (name, email, country) VALUES
     ('John Smith', 'john.smith@example.com', 'USA'),
     ('Sarah Johnson', 'sarah.j@example.com', 'USA'),
     ('Michael Davis', 'michael.d@example.com', 'Canada'),
     ('Emily Wilson', 'emily.w@example.com', 'USA'),
-    ('David Brown', 'david.b@example.com', 'Canada');
+    ('David Brown', 'david.b@example.com', 'Canada'),
+    ('Maria Garcia', 'maria.g@example.com', 'Mexico'),
+    ('James Anderson', 'james.a@example.com', 'USA'),
+    ('Lisa Chen', 'lisa.c@example.com', 'Canada');
 
--- Insert US region orders
-INSERT INTO orders (client_id, order_date, total_amount, status) VALUES
-    (1, '2024-11-15 10:30:00', 1245.50, 'completed'),
-    (1, '2024-11-28 14:20:00', 89.99, 'completed'),
-    (2, '2024-11-18 09:15:00', 450.00, 'completed'),
-    (2, '2024-12-01 16:45:00', 1200.00, 'pending'),
-    (3, '2024-11-20 11:00:00', 750.00, 'completed'),
-    (4, '2024-11-25 13:30:00', 120.00, 'shipped'),
-    (4, '2024-12-02 10:00:00', 399.99, 'pending'),
-    (5, '2024-11-22 15:20:00', 45.00, 'completed');
+-- Insert products
+INSERT INTO products (name, price, category) VALUES
+    ('Laptop Pro 15"', 1299.99, 'Electronics'),
+    ('Wireless Mouse', 29.99, 'Electronics'),
+    ('Office Desk', 349.99, 'Furniture'),
+    ('Gaming Chair', 299.99, 'Furniture'),
+    ('USB-C Cable', 19.99, 'Electronics'),
+    ('Monitor 27"', 399.99, 'Electronics'),
+    ('Keyboard Mechanical', 89.99, 'Electronics'),
+    ('Desk Lamp', 45.99, 'Furniture');
+
+-- Insert 2023 orders
+INSERT INTO orders_2023 (customer_id, product_id, order_date, quantity, total_amount, status) VALUES
+    (1, 1, '2023-11-15 10:30:00', 1, 1299.99, 'completed'),
+    (1, 2, '2023-11-15 10:30:00', 2, 59.98, 'completed'),
+    (2, 3, '2023-10-18 09:15:00', 1, 349.99, 'completed'),
+    (2, 8, '2023-10-18 09:15:00', 1, 45.99, 'completed'),
+    (3, 4, '2023-09-20 11:00:00', 1, 299.99, 'completed'),
+    (4, 6, '2023-12-25 13:30:00', 1, 399.99, 'completed'),
+    (4, 7, '2023-12-25 13:30:00', 1, 89.99, 'completed'),
+    (5, 5, '2023-08-22 15:20:00', 3, 59.97, 'completed'),
+    (6, 1, '2023-07-10 14:00:00', 1, 1299.99, 'completed'),
+    (7, 2, '2023-11-05 16:45:00', 5, 149.95, 'completed');

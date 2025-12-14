@@ -9,6 +9,7 @@ import (
 	"github.com/guilherme096/data-sync/pkg/data-sync/chatbot"
 	datasync "github.com/guilherme096/data-sync/pkg/data-sync"
 	"github.com/guilherme096/data-sync/pkg/data-sync/discovery"
+	"github.com/guilherme096/data-sync/pkg/data-sync/matching"
 	"github.com/guilherme096/data-sync/pkg/data-sync/query"
 	"github.com/guilherme096/data-sync/pkg/data-sync/storage"
 	"github.com/guilherme096/data-sync/pkg/data-sync/sync"
@@ -22,9 +23,10 @@ type Server struct {
 	discovery  discovery.MetadataDiscovery
 	agent      chatbot.AgentActions
 	translator query.QueryTranslator
+	matcher    *matching.Matcher
 }
 
-func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync, discovery discovery.MetadataDiscovery, agent chatbot.AgentActions, translator query.QueryTranslator) *Server {
+func NewServer(addr string, engine datasync.QueryEngine, storage storage.MetadataStorage, sync sync.MetadataSync, discovery discovery.MetadataDiscovery, agent chatbot.AgentActions, translator query.QueryTranslator, matcher *matching.Matcher) *Server {
 	return &Server{
 		addr:       addr,
 		engine:     engine,
@@ -33,6 +35,7 @@ func NewServer(addr string, engine datasync.QueryEngine, storage storage.Metadat
 		discovery:  discovery,
 		agent:      agent,
 		translator: translator,
+		matcher:    matcher,
 	}
 }
 
@@ -78,7 +81,7 @@ func (s *Server) Run() error {
 	globalRouter := routers.NewGlobalRouter(s.storage)
 	globalRouter.RegisterRoutes(mux)
 
-	relationRouter := routers.NewRelationRouter(s.storage, s.discovery)
+	relationRouter := routers.NewRelationRouter(s.storage, s.discovery, s.matcher)
 	relationRouter.RegisterRoutes(mux)
 
 	chatbotRouter := routers.NewChatbotRouter(s.agent, s.translator, s.discovery, s.storage)
