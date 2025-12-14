@@ -62,6 +62,29 @@ export type ColumnRelationship = {
   Description?: string;
 };
 
+export type TableSource = {
+  type: 'physical' | 'relation';
+  catalog?: string;
+  schema?: string;
+  table?: string;
+  relationId?: string;
+};
+
+export type JoinColumn = {
+  left: string;
+  right: string;
+};
+
+export type TableRelation = {
+  id: string;
+  name: string;
+  leftTable: TableSource;
+  rightTable: TableSource;
+  relationType: 'JOIN' | 'UNION';
+  joinColumn?: JoinColumn;
+  description?: string;
+};
+
 export type QueryResult = {
   Rows: Record<string, unknown>[] | null;
 };
@@ -353,5 +376,44 @@ export const api = {
 
     const data = await res.json();
     return data.message;
+  },
+
+  // Table Relations API
+  listTableRelations: async (): Promise<TableRelation[]> => {
+    const res = await fetch(`${API_BASE}/relations`);
+    if (!res.ok) throw new Error('Failed to fetch table relations');
+    return res.json();
+  },
+
+  getTableRelation: async (id: string): Promise<TableRelation> => {
+    const res = await fetch(`${API_BASE}/relations/${id}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || `Failed to fetch relation ${id}`);
+    }
+    return res.json();
+  },
+
+  createTableRelation: async (relation: TableRelation): Promise<TableRelation> => {
+    const res = await fetch(`${API_BASE}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(relation),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to create table relation');
+    }
+    return res.json();
+  },
+
+  deleteTableRelation: async (id: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/relations/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to delete table relation');
+    }
   },
 };

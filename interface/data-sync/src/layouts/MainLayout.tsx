@@ -14,7 +14,6 @@ export function MainLayout() {
            <NavLink to="/" icon={<MessageSquare className="w-4 h-4" />} label="Ask the Data" />
            <NavLink to="/query" icon={<Search className="w-4 h-4" />} label="Query" />
            <NavLink to="/schema" icon={<Workflow className="w-4 h-4" />} label="Schema Studio" />
-           <NavLink to="/inventory" icon={<Database className="w-4 h-4" />} label="Inventory" />
         </nav>
         <div className="p-4 border-t text-xs text-muted-foreground text-center">
           v0.1.0-alpha

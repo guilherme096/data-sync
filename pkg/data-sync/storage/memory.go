@@ -22,6 +22,7 @@ type MemoryMetadataStorage struct {
 	tableMappings  map[string][]*models.TableMapping                 // globalTable -> mappings
 	columnMappings map[string]map[string][]*models.ColumnMapping     // globalTable -> columnName -> mappings
 	columnRelationships map[string][]*models.ColumnRelationship      // globalTable -> relationships
+	tableRelations map[string]*models.TableRelation                  // relationID -> relation
 }
 
 func NewMemoryMetadataStorage() *MemoryMetadataStorage {
@@ -37,6 +38,7 @@ func NewMemoryMetadataStorage() *MemoryMetadataStorage {
 		tableMappings:  make(map[string][]*models.TableMapping),
 		columnMappings: make(map[string]map[string][]*models.ColumnMapping),
 		columnRelationships: make(map[string][]*models.ColumnRelationship),
+		tableRelations: make(map[string]*models.TableRelation),
 	}
 }
 
@@ -944,5 +946,78 @@ func (m *MemoryMetadataStorage) DeleteColumnRelationship(sourceTable, sourceColu
 		}
 	}
 
+	return nil
+}
+
+// ============================================================================
+// Table Relation Operations (JOIN/UNION)
+// ============================================================================
+
+func (m *MemoryMetadataStorage) CreateTableRelation(relation *models.TableRelation) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if relation.ID == "" || relation.Name == "" {
+		return fmt.Errorf("relation ID and name cannot be empty")
+	}
+
+	if relation.RelationType != "JOIN" && relation.RelationType != "UNION" {
+		return fmt.Errorf("relation type must be JOIN or UNION")
+	}
+
+	// Check if relation with same ID already exists
+	if _, exists := m.tableRelations[relation.ID]; exists {
+		return fmt.Errorf("relation with ID '%s' already exists", relation.ID)
+	}
+
+	// Check if relation with same name already exists
+	for _, existing := range m.tableRelations {
+		if existing.Name == relation.Name {
+			return fmt.Errorf("relation with name '%s' already exists", relation.Name)
+		}
+	}
+
+	// Validate JOIN requires join columns
+	if relation.RelationType == "JOIN" && relation.JoinColumn == nil {
+		return fmt.Errorf("JOIN relation requires join columns")
+	}
+
+	m.tableRelations[relation.ID] = relation
+	return nil
+}
+
+func (m *MemoryMetadataStorage) GetTableRelation(id string) (*models.TableRelation, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	relation, exists := m.tableRelations[id]
+	if !exists {
+		return nil, fmt.Errorf("relation with ID '%s' not found", id)
+	}
+
+	return relation, nil
+}
+
+func (m *MemoryMetadataStorage) ListTableRelations() ([]*models.TableRelation, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	relations := make([]*models.TableRelation, 0, len(m.tableRelations))
+	for _, relation := range m.tableRelations {
+		relations = append(relations, relation)
+	}
+
+	return relations, nil
+}
+
+func (m *MemoryMetadataStorage) DeleteTableRelation(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.tableRelations[id]; !exists {
+		return fmt.Errorf("relation with ID '%s' not found", id)
+	}
+
+	delete(m.tableRelations, id)
 	return nil
 }
