@@ -1,75 +1,24 @@
 <div align="center">
-  <img src="data-sync.png" alt="data-sync logo" width="200"/>
+  <img src="docs/data-sync.png" alt="data-sync logo" width="200"/>
 </div>
 
 # data-sync
 
-## Overview
+A distributed data integration platform that enables federated querying across multiple databases (PostgreSQL, MySQL, MongoDB) using Trino's distributed query engine. Features automatic metadata discovery, a REST API for catalog management, and a web interface for interactive query execution.
 
-Metadata sync API service for Trino - automatically discovers and caches catalogs and schemas for fast access via REST API.
+## Quickstart
 
-Includes Trino distributed query engine setup with 1 coordinator and 3 workers for cross-database federated queries.
-
-
-## Getting Started
-
-### 1. Start all services (Trino + data-sync API)
-
+Start all services (data sources, Trino cluster, backend API, and frontend):
 ```bash
-docker-compose up -d --build
+./start.sh
 ```
 
-This starts:
-- Trino coordinator (port 8080)
-- 3 Trino workers
-- data-sync API service (port 8081)
-
-
-
-### API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| GET | `/catalogs` | List all cached catalogs |
-| GET | `/catalogs/{name}` | Get specific catalog details |
-| GET | `/catalogs/{name}/schemas` | List schemas for a catalog |
-| POST | `/sync` | Manually trigger metadata sync |
-| POST | `/query` | Execute Trino query directly |
-
-### Examples
-
-#### List all catalogs
+Stop all services:
 ```bash
-curl http://localhost:8081/catalogs
+./stop.sh
 ```
 
-Response:
-```json
-[
-  {"Name": "mongodb", "Metadata": {}},
-  {"Name": "mysql", "Metadata": {}},
-  {"Name": "postgresql", "Metadata": {}},
-  {"Name": "system", "Metadata": {}}
-]
-```
-
-#### Get schemas for a catalog
-```bash
-curl http://localhost:8081/catalogs/system/schemas
-```
-
-Response:
-```json
-[
-  {"Name": "information_schema", "CatalogName": "system", "Metadata": {}},
-  {"Name": "jdbc", "CatalogName": "system", "Metadata": {}},
-  {"Name": "metadata", "CatalogName": "system", "Metadata": {}},
-  {"Name": "runtime", "CatalogName": "system", "Metadata": {}}
-]
-```
-
-#### Trigger manual sync
-```bash
-curl -X POST http://localhost:8081/sync
-```
+Once running, access:
+- **Frontend**: http://localhost:5173
+- **API**: http://localhost:8081
+- **Trino**: http://localhost:8080
